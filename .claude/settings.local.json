@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn types/job c:/Projetos/Patuvê --include=*.ts --include=*.tsx)",
+      "Bash(railway --version)",
+      "Bash(railway whoami:*)",
+      "Bash(railway init:*)",
+      "Bash(railway variables:*)",
+      "Bash(railway up:*)",
+      "Bash(railway service:*)",
+      "Bash(railway domain:*)",
+      "Bash(curl -s --max-time 15 https://patuve-backend-production.up.railway.app/health)",
+      "Bash(railway logs:*)",
+      "Bash(curl -s https://patuve-backend-production.up.railway.app/)",
+      "Bash(curl -s https://patuve-backend-production.up.railway.app/health)",
+      "Bash(node -e \":*)",
+      "Bash(npm outdated:*)",
+      "Bash(node -c server.js)",
+      "Bash(node -e \"const lock=require\\(''./package-lock.json''\\); console.log\\(''@anthropic-ai/sdk:'', lock.packages[''node_modules/@anthropic-ai/sdk''].version\\)\")"
+    ]
+  }
+}

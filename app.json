@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Patuvê",
+    "slug": "patuve",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "patuve",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0f"
+    },
+    "android": {
+      "package": "com.patuve.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0a0a0f"
+      },
+      "permissions": ["INTERNET"]
+    },
+    "plugins": ["expo-router"]
+  }
+}
+

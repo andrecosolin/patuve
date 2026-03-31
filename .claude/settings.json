@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \":*)",
+      "Bash(npx expo:*)",
+      "Bash(node server-mock.js)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(powershell -Command \"Stop-Process -Id 32136 -Force\")",
+      "Bash(curl -s http://localhost:8081/)",
+      "Bash(curl -s \"http://localhost:8081/_expo/constants\")"
+    ]
+  }
+}
