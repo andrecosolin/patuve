@@ -1,9 +1,9 @@
-﻿import axios, { AxiosError } from "axios";
+import axios, { AxiosError } from "axios";
 
 import { AppError, AppErrorCode, SearchFilters, SearchMeta, Vaga } from "@/types/vaga";
 import { validateVagasArray } from "@/utils/validators";
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://192.168.0.10:3001";
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? "https://patuve-backend-production.up.railway.app";
 
 const api = axios.create({
   baseURL: BACKEND_URL,
@@ -106,4 +106,6 @@ export async function buscarVagasAPI(filters: SearchFilters): Promise<BuscarResu
     throw buildAppError("UNKNOWN", error instanceof Error ? error.message : "Erro desconhecido na API.");
   }
 }
+
+
 

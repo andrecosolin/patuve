@@ -71,7 +71,7 @@ export function SearchForm({ filters, onChange, onSubmit, loading }: SearchFormP
   return (
     <View style={styles.container}>
       <View style={styles.brandRow}>
-        <Text style={styles.brand}>PATUVE</Text>
+        <Text style={styles.brand}>PATUVÊ</Text>
         <Text style={styles.subtitle}>Pra tu ver a vaga certa.</Text>
       </View>
 
@@ -278,3 +278,4 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 });
+
