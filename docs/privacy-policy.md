@@ -32,4 +32,5 @@ Para realizar buscas com IA, o Patuvê utiliza a API da Anthropic. Dados de busc
 
 Em caso de dúvidas sobre esta política, entre em contato:
 
-**E-mail:** [SEU_EMAIL]
+**E-mail:** ellojob2024@gmail.com
+
