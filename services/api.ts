@@ -18,6 +18,8 @@ type BuscarVagasResponse = {
 
 type ApiErrorPayload = {
   error?: string;
+  erro?: string;
+  mensagem?: string;
   code?: string;
   details?: string;
 };
@@ -53,11 +55,17 @@ function normalizeMeta(meta?: Partial<SearchMeta>): SearchMeta {
 function mapAxiosError(error: AxiosError<ApiErrorPayload>): AppError {
   const status = error.response?.status;
   const payload = error.response?.data;
-  const serverMessage = payload?.error ?? payload?.details ?? error.message;
+  const serverMessage = payload?.mensagem ?? payload?.error ?? payload?.details ?? error.message;
   const normalizedMessage = serverMessage.toLowerCase();
 
-  if (error.code === "ECONNABORTED" || normalizedMessage.includes("timeout")) {
-    return buildAppError("TIMEOUT", "A busca demorou mais do que o esperado.", status);
+  if (
+    status === 504 ||
+    payload?.erro === "busca_timeout" ||
+    payload?.code === "SEARCH_TIMEOUT" ||
+    error.code === "ECONNABORTED" ||
+    normalizedMessage.includes("timeout")
+  ) {
+    return buildAppError("TIMEOUT", payload?.mensagem ?? "A busca demorou mais do que o esperado.", status);
   }
 
   if (!error.response) {

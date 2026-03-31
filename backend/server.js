@@ -14,7 +14,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT ?? 3015;
 
-const MAX_SEARCH_TIME_MS = 15_000;
+const MAX_SEARCH_TIME_MS = 55_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MIN_MS_FOR_RETRY = 2_500;
 
@@ -35,6 +35,10 @@ const limiter = rateLimit({
 });
 
 let anthropicClient = null;
+
+function nowIso() {
+  return new Date().toISOString();
+}
 
 function createServerError(message, code = "API_ERROR", status = 500) {
   const error = new Error(message);
@@ -290,11 +294,17 @@ async function buscarVagasComPipeline(filters) {
   let removidasLink = 0;
   let timedOut = false;
 
+  const runAnthropicStep = async (label, task) => {
+    const started = Date.now();
+    console.log(`[${nowIso()}] [pipeline] Inicio da chamada Anthropic (${label})`);
+    const result = await task();
+    console.log(`[${nowIso()}] [pipeline] Fim da chamada Anthropic (${label}) em ${Date.now() - started}ms`);
+    return result;
+  };
+
   try {
-    const firstPass = await withTimeout(
-      () => runUntilDone([{ role: "user", content: buildPrompt(filters) }]),
-      remainingMs(deadline),
-      "busca IA"
+    const firstPass = await runAnthropicStep("busca IA", () =>
+      withTimeout(() => runUntilDone([{ role: "user", content: buildPrompt(filters) }]), remainingMs(deadline), "busca IA")
     );
     messages = firstPass.messages;
     response = firstPass.response;
@@ -302,15 +312,17 @@ async function buscarVagasComPipeline(filters) {
 
     if (vagasBrutas.length < 5 && remainingMs(deadline) > MIN_MS_FOR_RETRY) {
       try {
-        const retryPass = await withTimeout(
-          () =>
-            runUntilDone([
-              ...messages,
-              { role: "assistant", content: response.content },
-              { role: "user", content: buildRetryPrompt(filters.cargo, filters.cidade, vagasBrutas.length) },
-            ]),
-          remainingMs(deadline),
-          "retry IA"
+        const retryPass = await runAnthropicStep("retry IA", () =>
+          withTimeout(
+            () =>
+              runUntilDone([
+                ...messages,
+                { role: "assistant", content: response.content },
+                { role: "user", content: buildRetryPrompt(filters.cargo, filters.cidade, vagasBrutas.length) },
+              ]),
+            remainingMs(deadline),
+            "retry IA"
+          )
         );
 
         const retryVagas = normalizeVagas(extractJsonArray(extractText(retryPass.response)));
@@ -331,6 +343,8 @@ async function buscarVagasComPipeline(filters) {
     removidasFiltro = filtered.removidas;
 
     if (remainingMs(deadline) > 0) {
+      const validationStartedAt = Date.now();
+      console.log(`[${nowIso()}] [pipeline] Inicio da validacao de links`);
       try {
         const validated = await withTimeout(
           () => validarVagas(vagasFiltradas),
@@ -339,8 +353,10 @@ async function buscarVagasComPipeline(filters) {
         );
         vagasValidadas = validated.vagas;
         removidasLink = validated.removidas;
+        console.log(`[${nowIso()}] [pipeline] Fim da validacao de links em ${Date.now() - validationStartedAt}ms`);
       } catch (validationError) {
         timedOut = validationError?.code === "SEARCH_TIMEOUT";
+        console.log(`[${nowIso()}] [pipeline] Fim da validacao de links com falha em ${Date.now() - validationStartedAt}ms`);
         // Timeout/erro na validacao: mantem vagas filtradas (beneficio da duvida)
         vagasValidadas = vagasFiltradas;
         removidasLink = 0;
@@ -378,8 +394,9 @@ async function buscarVagasComPipeline(filters) {
   };
 
   console.log(
-    `[pipeline] cargo="${filters.cargo}" cidade="${filters.cidade}" validas=${meta.total_validas} tempo_ms=${meta.tempo_busca_ms} timeout=${timedOut}`
+    `[${nowIso()}] [pipeline] cargo="${filters.cargo}" cidade="${filters.cidade}" validas=${meta.total_validas} tempo_ms=${meta.tempo_busca_ms} timeout=${timedOut}`
   );
+  console.log(`[${nowIso()}] [pipeline] Motivo do encerramento: ${timedOut ? "timeout" : "sucesso"}`);
 
   return { vagas: vagasFinais, meta };
 }
@@ -412,6 +429,14 @@ app.post("/buscar-vagas", limiter, async (req, res) => {
     }
 
     const { vagas, meta } = await buscarVagasComPipeline(normalized);
+
+    if (meta.timed_out && meta.total_validas === 0) {
+      return res.status(504).json({
+        erro: "busca_timeout",
+        mensagem: "A busca demorou demais. Tente novamente.",
+      });
+    }
+
     const payload = { vagas, meta };
 
     setCacheEntry(cacheKey, payload);
