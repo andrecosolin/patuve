@@ -16,7 +16,11 @@
       "Bash(node -e \":*)",
       "Bash(npm outdated:*)",
       "Bash(node -c server.js)",
-      "Bash(node -e \"const lock=require\\(''./package-lock.json''\\); console.log\\(''@anthropic-ai/sdk:'', lock.packages[''node_modules/@anthropic-ai/sdk''].version\\)\")"
+      "Bash(node -e \"const lock=require\\(''./package-lock.json''\\); console.log\\(''@anthropic-ai/sdk:'', lock.packages[''node_modules/@anthropic-ai/sdk''].version\\)\")",
+      "Bash(cat app/\\\\\\(tabs\\\\\\)/index.tsx)",
+      "Bash(curl -s --max-time 10 https://patuve-backend-production.up.railway.app/health)",
+      "Bash(python3 -c \":*)",
+      "Bash(eas build:*)"
     ]
   }
 }
