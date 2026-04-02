@@ -104,48 +104,94 @@ function cleanupExpiredCache() {
 
 setInterval(cleanupExpiredCache, 60_000).unref();
 
+const EXPANSOES_SIGLAS = {
+  "\\bQA\\b": "QA Quality Assurance Analista de Qualidade Tester",
+  "\\bDev\\b": "Desenvolvedor Developer Programador",
+  "\\bUI\\b": "UI Design Interface",
+  "\\bUX\\b": "UX User Experience Design",
+  "\\bBI\\b": "BI Business Intelligence Analista de Dados",
+  "\\bDBA\\b": "DBA Administrador de Banco de Dados Database",
+  "\\bSRE\\b": "SRE Site Reliability Engineer DevOps",
+  "\\bML\\b": "ML Machine Learning Inteligencia Artificial",
+};
+
+const EXPANSOES_CONTRATO = {
+  PJ: "PJ Pessoa Juridica Freelancer Autonomo",
+  CLT: "CLT Carteira Assinada Emprego Formal",
+  Estagio: "Estagio Trainee Aprendiz",
+  Freelance: "Freelance Autonomo PJ Projeto",
+};
+
+function expandirSiglas(cargo, tipoContrato) {
+  let cargoExpandido = cargo;
+  for (const [padrao, expansao] of Object.entries(EXPANSOES_SIGLAS)) {
+    cargoExpandido = cargoExpandido.replace(new RegExp(padrao, "i"), expansao);
+  }
+
+  const contratoExpandido = EXPANSOES_CONTRATO[tipoContrato] ?? tipoContrato;
+  return { cargoExpandido, contratoExpandido };
+}
+
 function buildPrompt({ cargo, cidade, tipoContrato, nivel, modalidade }) {
-  const filtrosAtivos = [
-    tipoContrato !== "Ambos" && `tipo de contrato ${tipoContrato}`,
+  const { cargoExpandido, contratoExpandido } = expandirSiglas(cargo, tipoContrato);
+
+  const preferencias = [
+    tipoContrato !== "Ambos" && `tipo de contrato ${contratoExpandido}`,
     nivel !== "Todos" && `nivel ${nivel}`,
     modalidade !== "Todas" && `modalidade ${modalidade}`,
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .join(", ");
 
-  const muitosFiltros = filtrosAtivos.length > 2;
-  const contextoFiltros = muitosFiltros
-    ? `Prefira ${filtrosAtivos.join(", ")} mas inclua variacoes proximas quando necessario.`
-    : filtrosAtivos.length > 0
-      ? `Considere como filtros principais: ${filtrosAtivos.join(" | ")}.`
-      : "";
+  const blocoPreferencias = preferencias
+    ? `Preferencias (nao obrigatorias — inclua vagas proximas se nao achar exatas): ${preferencias}.`
+    : "";
 
-  return `Voce e especialista em busca de vagas de emprego no Brasil.
-Busque vagas ATIVAS e RECENTES (ultimos 30 dias) para "${cargo}" em "${cidade}".
-${contextoFiltros}
+  return `Voce e um especialista em recrutamento e busca de vagas no Brasil. Use todas as suas capacidades de busca na web para encontrar vagas reais e acessiveis.
 
-Regras de qualidade:
-- Foque em links diretos e unicos da vaga (https://)
-- Priorize: linkedin.com/jobs, gupy.io, indeed.com.br, catho.com.br, infojobs.com.br, vagas.com, trampos.co
-- Nao use paginas de busca generica
-- Retorne ate 10 vagas com estes campos:
-  titulo, empresa, localizacao, tipo_contrato, modalidade, descricao_curta, link_direto, fonte, data_publicacao
-- descricao_curta: ate 200 caracteres
-- data_publicacao: formato OBRIGATORIO "DD/MM/AAAA" (ex: "28/07/2025") ou null se nao encontrada — NUNCA retorne datas relativas como "há 2 dias" ou formato ISO
+OBJETIVO: Encontrar pelo menos 20 vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
+${blocoPreferencias}
 
-Retorne APENAS um JSON array valido, sem texto adicional.`;
+ESTRATEGIA DE BUSCA:
+- Busque em QUALQUER site publico da internet que contenha vagas de emprego
+- Exemplos de fontes (nao limitado a estas): LinkedIn, Gupy, Indeed, Catho, InfoJobs, Trampos, GeekHunter, 99jobs, Programathor, Himama, Emprego Ligado, Vagas.com, Empregos.com.br, sites de empresas diretamente, e qualquer outro portal publico
+- Se nao encontrar vagas suficientes na cidade exata, expanda para cidades proximas e vagas remotas
+- Use o maximo de buscas disponiveis para ampliar a cobertura
+- Priorize vagas publicadas nos ultimos 30 dias
+
+REGRAS CRITICAS:
+- Retorne SOMENTE vagas que voce encontrou de verdade — NUNCA invente uma vaga
+- Cada vaga DEVE ter um link direto valido e acessivel (https://) para a pagina especifica da vaga
+- Nao retorne links de paginas de busca generica — apenas paginas de vaga individual
+- Se nao tiver certeza se o link e valido, nao inclua a vaga
+
+CAMPOS OBRIGATORIOS por vaga:
+- titulo: nome exato do cargo como aparece na vaga
+- empresa: nome da empresa (null se anonima)
+- localizacao: cidade/estado ou "Remoto"
+- tipo_contrato: "CLT", "PJ", "Estagio", "Freelance", "Trainee" ou null
+- modalidade: "Remoto", "Hibrido" ou "Presencial" ou null
+- descricao_curta: resumo de ate 200 caracteres com stack e diferenciais
+- link_direto: URL direta da pagina da vaga (https://)
+- fonte: nome do site onde a vaga foi encontrada
+- data_publicacao: formato OBRIGATORIO "DD/MM/AAAA" ou null — NUNCA retorne datas relativas ou formato ISO
+
+Retorne APENAS um JSON array valido, sem texto adicional, sem markdown.`;
 }
 
 function buildRetryPrompt(cargo, cidade, count) {
-  return `Foram encontradas apenas ${count} vagas validas.
-Busque mais vagas de "${cargo}" em "${cidade}" e cidades proximas no Brasil.
-Aceite variacoes de titulo e modalidade proximas.
-Retorne APENAS JSON array com links diretos.`;
+  const { cargoExpandido } = expandirSiglas(cargo, "Ambos");
+  return `Encontrei apenas ${count} vagas validas ate agora.
+Faca mais buscas para "${cargoExpandido}" no Brasil inteiro, incluindo vagas remotas e em cidades proximas de "${cidade}".
+Explore fontes diferentes das ja usadas: GeekHunter, 99jobs, Programathor, sites de empresas de tecnologia, startups brasileiras.
+Retorne APENAS JSON array com links diretos validos.`;
 }
 
 const TOOLS = [
   {
     type: "web_search_20250305",
     name: "web_search",
-    max_uses: 8,
+    max_uses: 20,
     user_location: {
       type: "approximate",
       country: "BR",

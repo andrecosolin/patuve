@@ -2,7 +2,7 @@
   "expo": {
     "name": "Patuvê",
     "slug": "patuve",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "scheme": "patuve",
     "icon": "./assets/images/icon.png",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.patuve.app",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0f"
