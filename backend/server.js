@@ -9,13 +9,24 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { filtrarVagas } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
 
+function ordenarPorData(vagas) {
+  return [...vagas].sort((a, b) => {
+    // Vagas sem data vão para o final
+    if (!a.data_publicacao && !b.data_publicacao) return 0;
+    if (!a.data_publicacao) return 1;
+    if (!b.data_publicacao) return -1;
+    // Compara ISO YYYY-MM-DD diretamente como string (ordem lexicográfica = ordem cronológica)
+    return b.data_publicacao.localeCompare(a.data_publicacao);
+  });
+}
+
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT ?? 3015;
 
 const MAX_SEARCH_TIME_MS = 55_000;
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const MIN_MS_FOR_RETRY = 2_500;
 
 const inMemoryCache = new Map();
@@ -203,7 +214,7 @@ CAMPOS OBRIGATORIOS por vaga:
 - descricao_curta: resumo de ate 200 caracteres com stack e diferenciais
 - link_direto: URL direta da pagina da vaga (https://)
 - fonte: nome do site onde a vaga foi encontrada
-- data_publicacao: formato OBRIGATORIO "DD/MM/AAAA" ou null — NUNCA retorne datas relativas ou formato ISO
+- data_publicacao: formato OBRIGATORIO "YYYY-MM-DD" (ex: "2025-07-28") ou null — NUNCA retorne datas relativas como "há 2 dias" ou formato DD/MM/AAAA
 
 Retorne APENAS um JSON array valido, sem texto adicional, sem markdown.`;
 }
@@ -316,6 +327,17 @@ function normalizeModalidade(raw) {
   return null;
 }
 
+function normalizeDataPublicacao(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  // Formato ISO YYYY-MM-DD (esperado)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Formato legado DD/MM/AAAA — converte para YYYY-MM-DD
+  const legado = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (legado) return `${legado[3]}-${legado[2]}-${legado[1]}`;
+  return null;
+}
+
 function normalizeVagas(rawArray) {
   if (!Array.isArray(rawArray)) {
     return [];
@@ -333,7 +355,7 @@ function normalizeVagas(rawArray) {
       descricao_curta: String(item.descricao_curta ?? "").slice(0, 200),
       link_direto: String(item.link_direto),
       fonte: normalizeFonte(item.fonte),
-      data_publicacao: item.data_publicacao ? String(item.data_publicacao) : null,
+      data_publicacao: normalizeDataPublicacao(item.data_publicacao),
     }));
 }
 
@@ -442,16 +464,16 @@ async function buscarVagasComPipeline(filters) {
       removidasLink = 0;
     }
 
-    vagasFinais = ordenarPorFonte(vagasValidadas);
+    vagasFinais = ordenarPorData(vagasValidadas);
   } catch (error) {
     if (error?.code === "SEARCH_TIMEOUT") {
       timedOut = true;
       if (vagasValidadas.length > 0) {
-        vagasFinais = ordenarPorFonte(vagasValidadas);
+        vagasFinais = ordenarPorData(vagasValidadas);
       } else if (vagasFiltradas.length > 0) {
-        vagasFinais = ordenarPorFonte(vagasFiltradas);
+        vagasFinais = ordenarPorData(vagasFiltradas);
       } else {
-        vagasFinais = ordenarPorFonte(vagasBrutas);
+        vagasFinais = ordenarPorData(vagasBrutas);
       }
     } else {
       throw error;
