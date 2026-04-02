@@ -9,7 +9,7 @@ console.log("BACKEND_URL:", BACKEND_URL);
 
 const api = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 70_000,
+  timeout: 90_000,
 });
 
 type BuscarVagasResponse = {

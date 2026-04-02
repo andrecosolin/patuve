@@ -23,11 +23,13 @@ function ordenarPorData(vagas) {
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1); // Railway usa proxy reverso
 const port = process.env.PORT ?? 3015;
 
-const MAX_SEARCH_TIME_MS = 55_000;
+const MAX_SEARCH_TIME_MS = 75_000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const MIN_MS_FOR_RETRY = 2_500;
+const MAX_MS_FIRST_CALL_FOR_RETRY = 25_000; // so faz retry se primeira chamada terminou em < 25s
+const MIN_REMAINING_FOR_RETRY = 40_000;     // so faz retry se ainda restar >= 40s no deadline
 
 const inMemoryCache = new Map();
 
@@ -187,9 +189,14 @@ function buildPrompt({ cargo, cidade, tipoContrato, nivel, modalidade }) {
     ? `Preferencias (nao obrigatorias — inclua vagas proximas se nao achar exatas): ${preferencias}.`
     : "";
 
+  const cargoEhSigla = cargo.trim().length <= 3;
+  const blocoSigla = cargoEhSigla
+    ? `ATENCAO — O cargo buscado e uma sigla curta ("${cargo}"). Busque OBRIGATORIAMENTE por todas as variacoes e sinonimos em portugues e ingles. Por exemplo, se for "QA", busque por: QA, Quality Assurance, Analista de Qualidade, Tester, QA Engineer, Analista QA, Analista de Testes. Inclua cargos relacionados e similares caso nao encontre vagas exatas.\n`
+    : "";
+
   return `Voce e um especialista em recrutamento e busca de vagas no Brasil. Use todas as suas capacidades de busca na web para encontrar vagas reais e acessiveis.
 
-OBJETIVO: Encontrar pelo menos 20 vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
+${blocoSigla}OBJETIVO: Encontrar pelo menos 20 vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
 ${blocoPreferencias}
 
 ESTRATEGIA DE BUSCA:
@@ -395,19 +402,27 @@ async function buscarVagasComPipeline(filters) {
     const started = Date.now();
     console.log(`[${nowIso()}] [pipeline] Inicio da chamada Anthropic (${label})`);
     const result = await task();
-    console.log(`[${nowIso()}] [pipeline] Fim da chamada Anthropic (${label}) em ${Date.now() - started}ms`);
-    return result;
+    const elapsed = Date.now() - started;
+    console.log(`[${nowIso()}] [pipeline] Fim da chamada Anthropic (${label}) em ${elapsed}ms`);
+    return { result, elapsed };
   };
 
   try {
-    const firstPass = await runAnthropicStep("busca IA", () =>
+    const { result: firstPass, elapsed: firstCallMs } = await runAnthropicStep("busca IA", () =>
       withTimeout(() => runUntilDone([{ role: "user", content: buildPrompt(filters) }]), remainingMs(deadline), "busca IA")
     );
     messages = firstPass.messages;
     response = firstPass.response;
     vagasBrutas = normalizeVagas(extractJsonArray(extractText(response)));
 
-    if (vagasBrutas.length < 5 && remainingMs(deadline) > MIN_MS_FOR_RETRY) {
+    const deveRetry =
+      vagasBrutas.length < 5 &&
+      firstCallMs < MAX_MS_FIRST_CALL_FOR_RETRY &&
+      remainingMs(deadline) >= MIN_REMAINING_FOR_RETRY;
+
+    console.log(`[${nowIso()}] [pipeline] firstCallMs=${firstCallMs} vagasBrutas=${vagasBrutas.length} deveRetry=${deveRetry}`);
+
+    if (deveRetry) {
       try {
         const retryPass = await runAnthropicStep("retry IA", () =>
           withTimeout(
