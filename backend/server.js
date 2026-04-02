@@ -447,8 +447,9 @@ async function buscarVagasComPipeline(filters) {
   }
 
   // Busca paralela em TODAS as fontes (allSettled: nunca cancela)
+  // Jooble suporta português — usa cargoPt. Demais APIs são en-only — usam cargoEn.
   const resultados = await Promise.allSettled([
-    joobleService(cargoEn, filters.cidade),
+    joobleService(cargoPt, filters.cidade),
     himalayasService(cargoEn),
     remoteokService(cargoEn),
     jobicyService(cargoEn),
