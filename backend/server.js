@@ -34,8 +34,6 @@ const port = process.env.PORT ?? 3015;
 
 const MAX_SEARCH_TIME_MS = 75_000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const MAX_MS_FIRST_CALL_FOR_RETRY = 25_000; // so faz retry se primeira chamada terminou em < 25s
-const MIN_REMAINING_FOR_RETRY = 40_000;     // so faz retry se ainda restar >= 40s no deadline
 
 const inMemoryCache = new Map();
 
@@ -200,23 +198,30 @@ function buildPrompt({ cargo, cidade, tipoContrato, nivel, modalidade }) {
     ? `ATENCAO — O cargo buscado e uma sigla curta ("${cargo}"). Busque OBRIGATORIAMENTE por todas as variacoes e sinonimos em portugues e ingles. Por exemplo, se for "QA", busque por: QA, Quality Assurance, Analista de Qualidade, Tester, QA Engineer, Analista QA, Analista de Testes. Inclua cargos relacionados e similares caso nao encontre vagas exatas.\n`
     : "";
 
-  return `Voce e um especialista em recrutamento e busca de vagas no Brasil. Use todas as suas capacidades de busca na web para encontrar vagas reais e acessiveis.
+  return `Voce e um especialista em recrutamento. Use suas ferramentas de busca na web para encontrar vagas reais publicadas recentemente.
 
-${blocoSigla}OBJETIVO: Encontrar pelo menos 20 vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
+${blocoSigla}OBJETIVO: Encontrar vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
 ${blocoPreferencias}
 
-ESTRATEGIA DE BUSCA:
-- Busque em QUALQUER site publico da internet que contenha vagas de emprego
-- Exemplos de fontes (nao limitado a estas): LinkedIn, Gupy, Indeed, Catho, InfoJobs, Trampos, GeekHunter, 99jobs, Programathor, Himama, Emprego Ligado, Vagas.com, Empregos.com.br, sites de empresas diretamente, e qualquer outro portal publico
-- Se nao encontrar vagas suficientes na cidade exata, expanda para cidades proximas e vagas remotas
-- Use o maximo de buscas disponiveis para ampliar a cobertura
-- Priorize vagas publicadas nos ultimos 30 dias
+SITES PRIORITARIOS — busque especificamente nestes:
+- linkedin.com/jobs
+- gupy.io
+- catho.com.br
+- infojobs.com.br
+- vagas.com.br
+- trampos.co
+- programathor.com.br
+- gekhunter.com.br
+- 99jobs.com
+- remotar.com.br
+
+Se nao encontrar vagas suficientes nos sites acima, expanda para outros portais publicos, cidades proximas e vagas remotas.
+Priorize vagas publicadas nos ultimos 30 dias.
 
 REGRAS CRITICAS:
 - Retorne SOMENTE vagas que voce encontrou de verdade — NUNCA invente uma vaga
 - Cada vaga DEVE ter um link direto valido e acessivel (https://) para a pagina especifica da vaga
 - Nao retorne links de paginas de busca generica — apenas paginas de vaga individual
-- Se nao tiver certeza se o link e valido, nao inclua a vaga
 
 CAMPOS OBRIGATORIOS por vaga:
 - titulo: nome exato do cargo como aparece na vaga
@@ -227,18 +232,11 @@ CAMPOS OBRIGATORIOS por vaga:
 - descricao_curta: resumo de ate 200 caracteres com stack e diferenciais
 - link_direto: URL direta da pagina da vaga (https://)
 - fonte: nome do site onde a vaga foi encontrada
-- data_publicacao: formato OBRIGATORIO "YYYY-MM-DD" (ex: "2025-07-28") ou null — NUNCA retorne datas relativas como "há 2 dias" ou formato DD/MM/AAAA
+- data_publicacao: formato OBRIGATORIO "YYYY-MM-DD" (ex: "2025-07-28") ou null — NUNCA retorne datas relativas como "ha 2 dias" ou formato DD/MM/AAAA
 
 Retorne APENAS um JSON array valido, sem texto adicional, sem markdown.`;
 }
 
-function buildRetryPrompt(cargo, cidade, count) {
-  const { cargoExpandido } = expandirSiglas(cargo, "Ambos");
-  return `Encontrei apenas ${count} vagas validas ate agora.
-Faca mais buscas para "${cargoExpandido}" no Brasil inteiro, incluindo vagas remotas e em cidades proximas de "${cidade}".
-Explore fontes diferentes das ja usadas: GeekHunter, 99jobs, Programathor, sites de empresas de tecnologia, startups brasileiras.
-Retorne APENAS JSON array com links diretos validos.`;
-}
 
 const TOOLS = [
   {
@@ -315,7 +313,11 @@ function extractJsonArray(text) {
   return JSON.parse(text.slice(start, end + 1));
 }
 
-const FONTES_CONHECIDAS = ["LinkedIn", "Gupy", "Indeed", "Catho", "InfoJobs", "Vagas.com", "trampos.co"];
+const FONTES_CONHECIDAS = [
+  "LinkedIn", "Gupy", "Indeed", "Catho", "InfoJobs", "Vagas.com", "trampos.co",
+  "Jooble", "Himalayas", "RemoteOK", "Jobicy", "The Muse", "Arbeitnow",
+  "GeekHunter", "99jobs", "Programathor", "Remotar",
+];
 
 function normalizeFonte(raw) {
   const source = String(raw ?? "");
@@ -400,36 +402,22 @@ function deduplicarPorLink(vagas) {
   });
 }
 
-async function buscarVagasExternas(filters) {
-  const { cargo, cidade } = filters;
-  const startedAt = Date.now();
-
-  console.log(`[${nowIso()}] [etapa1] Iniciando busca paralela nas APIs externas...`);
-
-  const [jooble, himalayas, remoteok, jobicy, themuse, arbeitnow] = await Promise.all([
-    joobleService(cargo, cidade).catch(() => []),
-    himalayasService(cargo).catch(() => []),
-    remoteokService(cargo).catch(() => []),
-    jobicyService(cargo).catch(() => []),
-    themuseService(cargo).catch(() => []),
-    arbeitnowService(cargo).catch(() => []),
-  ]);
-
-  const contagens = {
-    jooble: jooble.length,
-    himalayas: himalayas.length,
-    remoteok: remoteok.length,
-    jobicy: jobicy.length,
-    themuse: themuse.length,
-    arbeitnow: arbeitnow.length,
-  };
-
-  console.log(
-    `[${nowIso()}] [etapa1] Resultados: jooble=${contagens.jooble} himalayas=${contagens.himalayas} remoteok=${contagens.remoteok} jobicy=${contagens.jobicy} themuse=${contagens.themuse} arbeitnow=${contagens.arbeitnow} (${Date.now() - startedAt}ms)`
-  );
-
-  const todas = [...jooble, ...himalayas, ...remoteok, ...jobicy, ...themuse, ...arbeitnow];
-  return normalizeVagas(deduplicarPorLink(todas));
+async function buscarAnthropicParalelo(filters, deadline) {
+  const started = Date.now();
+  console.log(`[${nowIso()}] [pipeline] Anthropic: iniciando busca...`);
+  try {
+    const { response } = await withTimeout(
+      () => runUntilDone([{ role: "user", content: buildPrompt(filters) }]),
+      remainingMs(deadline),
+      "busca Anthropic"
+    );
+    const vagas = normalizeVagas(extractJsonArray(extractText(response)));
+    console.log(`[${nowIso()}] [pipeline] Anthropic: ${vagas.length} vagas em ${Date.now() - started}ms`);
+    return vagas;
+  } catch (err) {
+    console.warn(`[${nowIso()}] [pipeline] Anthropic: falhou em ${Date.now() - started}ms — ${err.message}`);
+    return [];
+  }
 }
 
 async function buscarVagasComPipeline(filters) {
@@ -443,91 +431,42 @@ async function buscarVagasComPipeline(filters) {
   let removidasFiltro = 0;
   let removidasLink = 0;
   let timedOut = false;
-  let usouAnthropic = false;
-
-  const runAnthropicStep = async (label, task) => {
-    const started = Date.now();
-    console.log(`[${nowIso()}] [pipeline] Inicio da chamada Anthropic (${label})`);
-    const result = await task();
-    const elapsed = Date.now() - started;
-    console.log(`[${nowIso()}] [pipeline] Fim da chamada Anthropic (${label}) em ${elapsed}ms`);
-    return { result, elapsed };
-  };
 
   try {
-    // ETAPA 1 — Busca paralela nas APIs externas
-    const vagasExternas = await buscarVagasExternas(filters);
-    console.log(`[${nowIso()}] [etapa1] Total unico apos dedup: ${vagasExternas.length}`);
+    // ETAPA 1 — Busca paralela em TODAS as fontes ao mesmo tempo
+    const [jooble, himalayas, remoteok, jobicy, themuse, arbeitnow, anthropic] = await Promise.all([
+      joobleService(filters.cargo, filters.cidade).catch(() => []),
+      himalayasService(filters.cargo).catch(() => []),
+      remoteokService(filters.cargo).catch(() => []),
+      jobicyService(filters.cargo).catch(() => []),
+      themuseService(filters.cargo).catch(() => []),
+      arbeitnowService(filters.cargo).catch(() => []),
+      buscarAnthropicParalelo(filters, deadline),
+    ]);
 
-    vagasBrutas = vagasExternas;
+    console.log(`[${nowIso()}] [pipeline] Jooble: ${jooble.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] Himalayas: ${himalayas.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] RemoteOK: ${remoteok.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] Jobicy: ${jobicy.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] TheMuse: ${themuse.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] Arbeitnow: ${arbeitnow.length} vagas`);
+    console.log(`[${nowIso()}] [pipeline] Anthropic: ${anthropic.length} vagas`);
 
-    // ETAPA 2 — Anthropic como backup se menos de 5 vagas externas
-    if (vagasBrutas.length < 5 && remainingMs(deadline) >= MIN_REMAINING_FOR_RETRY) {
-      usouAnthropic = true;
-      console.log(`[${nowIso()}] [etapa2] Vagas externas insuficientes (${vagasBrutas.length}). Acionando Anthropic como backup...`);
+    const todasBrutas = [...jooble, ...himalayas, ...remoteok, ...jobicy, ...themuse, ...arbeitnow, ...anthropic];
+    console.log(`[${nowIso()}] [pipeline] Total bruto: ${todasBrutas.length} vagas`);
 
-      let messages = [];
-      let response = null;
+    vagasBrutas = normalizeVagas(deduplicarPorLink(todasBrutas));
+    console.log(`[${nowIso()}] [pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
 
-      const { result: firstPass, elapsed: firstCallMs } = await runAnthropicStep("busca IA", () =>
-        withTimeout(() => runUntilDone([{ role: "user", content: buildPrompt(filters) }]), remainingMs(deadline), "busca IA")
-      );
-      messages = firstPass.messages;
-      response = firstPass.response;
-      const vagasIA = normalizeVagas(extractJsonArray(extractText(response)));
-
-      console.log(`[${nowIso()}] [etapa2] Anthropic retornou ${vagasIA.length} vagas em ${firstCallMs}ms`);
-
-      const deveRetry =
-        vagasIA.length < 5 &&
-        firstCallMs < MAX_MS_FIRST_CALL_FOR_RETRY &&
-        remainingMs(deadline) >= MIN_REMAINING_FOR_RETRY;
-
-      if (deveRetry) {
-        try {
-          const retryPass = await runAnthropicStep("retry IA", () =>
-            withTimeout(
-              () =>
-                runUntilDone([
-                  ...messages,
-                  { role: "assistant", content: response.content },
-                  { role: "user", content: buildRetryPrompt(filters.cargo, filters.cidade, vagasIA.length) },
-                ]),
-              remainingMs(deadline),
-              "retry IA"
-            )
-          );
-
-          const retryVagas = normalizeVagas(extractJsonArray(extractText(retryPass.response)));
-          if (retryVagas.length > vagasIA.length) {
-            console.log(`[${nowIso()}] [etapa2] Retry trouxe ${retryVagas.length} vagas`);
-            vagasBrutas = deduplicarPorLink([...vagasBrutas, ...retryVagas]);
-          } else {
-            vagasBrutas = deduplicarPorLink([...vagasBrutas, ...vagasIA]);
-          }
-        } catch (retryError) {
-          if (retryError?.code === "SEARCH_TIMEOUT") {
-            timedOut = true;
-          } else {
-            console.warn(`[pipeline] Retry falhou: ${retryError.message}`);
-          }
-          vagasBrutas = deduplicarPorLink([...vagasBrutas, ...vagasIA]);
-        }
-      } else {
-        vagasBrutas = deduplicarPorLink([...vagasBrutas, ...vagasIA]);
-      }
-    }
-
-    console.log(`[${nowIso()}] [pipeline] Total apos merge: ${vagasBrutas.length} vagas | Anthropic usado: ${usouAnthropic}`);
-
-    // ETAPA 3 — Filtragem e validacao
+    // ETAPA 2 — Filtragem
     const filtered = filtrarVagas(vagasBrutas);
     vagasFiltradas = filtered.vagas;
     removidasFiltro = filtered.removidas;
+    console.log(`[${nowIso()}] [pipeline] Apos filtros: ${vagasFiltradas.length} vagas (removidas: ${removidasFiltro})`);
 
+    // ETAPA 3 — Validacao de links
     if (remainingMs(deadline) > 0) {
       const validationStartedAt = Date.now();
-      console.log(`[${nowIso()}] [pipeline] Inicio da validacao de links`);
       try {
         const validated = await withTimeout(
           () => validarVagas(vagasFiltradas),
@@ -536,12 +475,12 @@ async function buscarVagasComPipeline(filters) {
         );
         vagasValidadas = validated.vagas;
         removidasLink = validated.removidas;
-        console.log(`[${nowIso()}] [pipeline] Fim da validacao de links em ${Date.now() - validationStartedAt}ms`);
+        console.log(`[${nowIso()}] [pipeline] Apos validacao links: ${vagasValidadas.length} vagas (removidas: ${removidasLink}) em ${Date.now() - validationStartedAt}ms`);
       } catch (validationError) {
         timedOut = validationError?.code === "SEARCH_TIMEOUT";
-        console.log(`[${nowIso()}] [pipeline] Validacao de links encerrada com falha em ${Date.now() - validationStartedAt}ms`);
         vagasValidadas = vagasFiltradas;
         removidasLink = 0;
+        console.log(`[${nowIso()}] [pipeline] Validacao de links encerrada por timeout — mantendo ${vagasValidadas.length} vagas`);
       }
     } else {
       timedOut = true;
@@ -575,7 +514,7 @@ async function buscarVagasComPipeline(filters) {
   };
 
   console.log(
-    `[${nowIso()}] [pipeline] cargo="${filters.cargo}" cidade="${filters.cidade}" validas=${meta.total_validas} tempo_ms=${meta.tempo_busca_ms} timeout=${timedOut} anthropic=${usouAnthropic}`
+    `[${nowIso()}] [pipeline] Final: ${vagasFinais.length} vagas em ${meta.tempo_busca_ms}ms | cargo="${filters.cargo}" cidade="${filters.cidade}" timeout=${timedOut}`
   );
 
   return { vagas: vagasFinais, meta };

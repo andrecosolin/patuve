@@ -11,9 +11,9 @@ import { AppError, SearchFilters, SearchMeta, Vaga } from "@/types/vaga";
 
 const PAGE_SIZE = 5;
 const LOADING_MESSAGES = [
-  "Buscando vagas em LinkedIn e Gupy...",
-  "Validando links encontrados...",
-  "Filtrando resultados...",
+  "Buscando vagas...",
+  "Analisando resultados...",
+  "Validando oportunidades...",
 ];
 
 const initialFilters: SearchFilters = {
