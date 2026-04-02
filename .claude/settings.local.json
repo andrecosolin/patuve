@@ -20,7 +20,13 @@
       "Bash(cat app/\\\\\\(tabs\\\\\\)/index.tsx)",
       "Bash(curl -s --max-time 10 https://patuve-backend-production.up.railway.app/health)",
       "Bash(python3 -c \":*)",
-      "Bash(eas build:*)"
+      "Bash(eas build:*)",
+      "Bash(eas build:view 7f248ecd-5476-4be5-86c6-bbbfddeb5f2a)",
+      "Bash(eas build:cancel 559a0f93-010e-47e8-813b-a007b6b0bcb9)",
+      "Bash(eas build:view 095ff9f4-e1bc-4226-b63a-6e71d19817e8)",
+      "Bash(ls app.config.*)",
+      "Bash(eas build:view 27290fd7-ec12-4966-a11b-ce7df4c298f7)",
+      "Bash(eas build:view 7c990976-ce1f-416b-ad28-3ba1beb94ed2)"
     ]
   }
 }
