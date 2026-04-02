@@ -32,7 +32,8 @@ const app = express();
 app.set("trust proxy", 1); // Railway usa proxy reverso
 const port = process.env.PORT ?? 3015;
 
-const MAX_SEARCH_TIME_MS = 75_000;
+const MAX_SEARCH_TIME_MS = 55_000;
+const ANTHROPIC_TIMEOUT_MS = 50_000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 const inMemoryCache = new Map();
@@ -402,22 +403,28 @@ function deduplicarPorLink(vagas) {
   });
 }
 
-async function buscarAnthropicParalelo(filters, deadline) {
+async function buscarAnthropicParalelo(filters) {
   const started = Date.now();
-  console.log(`[${nowIso()}] [pipeline] Anthropic: iniciando busca...`);
   try {
     const { response } = await withTimeout(
       () => runUntilDone([{ role: "user", content: buildPrompt(filters) }]),
-      remainingMs(deadline),
+      ANTHROPIC_TIMEOUT_MS,
       "busca Anthropic"
     );
-    const vagas = normalizeVagas(extractJsonArray(extractText(response)));
-    console.log(`[${nowIso()}] [pipeline] Anthropic: ${vagas.length} vagas em ${Date.now() - started}ms`);
-    return vagas;
+    return normalizeVagas(extractJsonArray(extractText(response)));
   } catch (err) {
-    console.warn(`[${nowIso()}] [pipeline] Anthropic: falhou em ${Date.now() - started}ms — ${err.message}`);
-    return [];
+    throw new Error(`Anthropic falhou: ${err.message}`);
   }
+}
+
+function extrairResultado(settled, nome) {
+  if (settled.status === "fulfilled") {
+    const vagas = Array.isArray(settled.value) ? settled.value : [];
+    console.log(`[pipeline] ${nome}: ${vagas.length} vagas`);
+    return { vagas, falhou: false };
+  }
+  console.log(`[pipeline] ${nome}: falhou — ${settled.reason?.message ?? "erro desconhecido"}`);
+  return { vagas: [], falhou: true };
 }
 
 async function buscarVagasComPipeline(filters) {
@@ -430,79 +437,65 @@ async function buscarVagasComPipeline(filters) {
   let vagasFinais = [];
   let removidasFiltro = 0;
   let removidasLink = 0;
-  let timedOut = false;
 
-  try {
-    // ETAPA 1 — Busca paralela em TODAS as fontes ao mesmo tempo
-    const [jooble, himalayas, remoteok, jobicy, themuse, arbeitnow, anthropic] = await Promise.all([
-      joobleService(filters.cargo, filters.cidade).catch(() => []),
-      himalayasService(filters.cargo).catch(() => []),
-      remoteokService(filters.cargo).catch(() => []),
-      jobicyService(filters.cargo).catch(() => []),
-      themuseService(filters.cargo).catch(() => []),
-      arbeitnowService(filters.cargo).catch(() => []),
-      buscarAnthropicParalelo(filters, deadline),
-    ]);
+  // ETAPA 1 — Busca paralela em TODAS as fontes (allSettled: nunca cancela)
+  const resultados = await Promise.allSettled([
+    joobleService(filters.cargo, filters.cidade),
+    himalayasService(filters.cargo),
+    remoteokService(filters.cargo),
+    jobicyService(filters.cargo),
+    themuseService(filters.cargo),
+    arbeitnowService(filters.cargo),
+    buscarAnthropicParalelo(filters),
+  ]);
 
-    console.log(`[${nowIso()}] [pipeline] Jooble: ${jooble.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] Himalayas: ${himalayas.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] RemoteOK: ${remoteok.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] Jobicy: ${jobicy.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] TheMuse: ${themuse.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] Arbeitnow: ${arbeitnow.length} vagas`);
-    console.log(`[${nowIso()}] [pipeline] Anthropic: ${anthropic.length} vagas`);
+  const nomes = ["Jooble", "Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Anthropic"];
+  let fontesFalharam = 0;
 
-    const todasBrutas = [...jooble, ...himalayas, ...remoteok, ...jobicy, ...themuse, ...arbeitnow, ...anthropic];
-    console.log(`[${nowIso()}] [pipeline] Total bruto: ${todasBrutas.length} vagas`);
+  const todasBrutas = [];
+  for (let i = 0; i < resultados.length; i++) {
+    const { vagas, falhou } = extrairResultado(resultados[i], nomes[i]);
+    if (falhou) fontesFalharam++;
+    todasBrutas.push(...vagas);
+  }
 
-    vagasBrutas = normalizeVagas(deduplicarPorLink(todasBrutas));
-    console.log(`[${nowIso()}] [pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
+  const parcial = fontesFalharam > 0;
+  console.log(`[pipeline] Resultado parcial: ${parcial ? `sim (${fontesFalharam} fonte(s) falharam)` : "nao"}`);
+  console.log(`[pipeline] Total bruto: ${todasBrutas.length} vagas`);
 
-    // ETAPA 2 — Filtragem
-    const filtered = filtrarVagas(vagasBrutas);
-    vagasFiltradas = filtered.vagas;
-    removidasFiltro = filtered.removidas;
-    console.log(`[${nowIso()}] [pipeline] Apos filtros: ${vagasFiltradas.length} vagas (removidas: ${removidasFiltro})`);
+  vagasBrutas = normalizeVagas(deduplicarPorLink(todasBrutas));
+  console.log(`[pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
 
-    // ETAPA 3 — Validacao de links
-    if (remainingMs(deadline) > 0) {
-      const validationStartedAt = Date.now();
-      try {
-        const validated = await withTimeout(
-          () => validarVagas(vagasFiltradas),
-          remainingMs(deadline),
-          "validacao de links"
-        );
-        vagasValidadas = validated.vagas;
-        removidasLink = validated.removidas;
-        console.log(`[${nowIso()}] [pipeline] Apos validacao links: ${vagasValidadas.length} vagas (removidas: ${removidasLink}) em ${Date.now() - validationStartedAt}ms`);
-      } catch (validationError) {
-        timedOut = validationError?.code === "SEARCH_TIMEOUT";
-        vagasValidadas = vagasFiltradas;
-        removidasLink = 0;
-        console.log(`[${nowIso()}] [pipeline] Validacao de links encerrada por timeout — mantendo ${vagasValidadas.length} vagas`);
-      }
-    } else {
-      timedOut = true;
+  // ETAPA 2 — Filtragem
+  const filtered = filtrarVagas(vagasBrutas);
+  vagasFiltradas = filtered.vagas;
+  removidasFiltro = filtered.removidas;
+  console.log(`[pipeline] Apos filtros: ${vagasFiltradas.length} vagas (removidas: ${removidasFiltro})`);
+
+  // ETAPA 3 — Validacao de links (com o tempo restante)
+  if (remainingMs(deadline) > 0) {
+    const validationStartedAt = Date.now();
+    try {
+      const validated = await withTimeout(
+        () => validarVagas(vagasFiltradas),
+        remainingMs(deadline),
+        "validacao de links"
+      );
+      vagasValidadas = validated.vagas;
+      removidasLink = validated.removidas;
+      console.log(`[pipeline] Apos validacao links: ${vagasValidadas.length} vagas (removidas: ${removidasLink}) em ${Date.now() - validationStartedAt}ms`);
+    } catch {
+      // Timeout na validacao: mantém vagas sem validar (beneficio da duvida)
       vagasValidadas = vagasFiltradas;
       removidasLink = 0;
+      console.log(`[pipeline] Validacao de links encerrada por timeout — mantendo ${vagasValidadas.length} vagas`);
     }
-
-    vagasFinais = ordenarPorData(vagasValidadas);
-  } catch (error) {
-    if (error?.code === "SEARCH_TIMEOUT") {
-      timedOut = true;
-      if (vagasValidadas.length > 0) {
-        vagasFinais = ordenarPorData(vagasValidadas);
-      } else if (vagasFiltradas.length > 0) {
-        vagasFinais = ordenarPorData(vagasFiltradas);
-      } else {
-        vagasFinais = ordenarPorData(vagasBrutas);
-      }
-    } else {
-      throw error;
-    }
+  } else {
+    vagasValidadas = vagasFiltradas;
+    removidasLink = 0;
   }
+
+  vagasFinais = ordenarPorData(vagasValidadas);
 
   const meta = {
     total_encontradas: vagasBrutas.length,
@@ -510,11 +503,11 @@ async function buscarVagasComPipeline(filters) {
     removidas_filtro: removidasFiltro,
     removidas_link_invalido: removidasLink,
     tempo_busca_ms: Date.now() - startedAt,
-    timed_out: timedOut,
+    parcial,
   };
 
   console.log(
-    `[${nowIso()}] [pipeline] Final: ${vagasFinais.length} vagas em ${meta.tempo_busca_ms}ms | cargo="${filters.cargo}" cidade="${filters.cidade}" timeout=${timedOut}`
+    `[pipeline] Final: ${vagasFinais.length} vagas em ${meta.tempo_busca_ms}ms | cargo="${filters.cargo}" cidade="${filters.cidade}" parcial=${parcial}`
   );
 
   return { vagas: vagasFinais, meta };
@@ -549,7 +542,7 @@ app.post("/buscar-vagas", limiter, async (req, res) => {
 
     const { vagas, meta } = await buscarVagasComPipeline(normalized);
 
-    if (meta.timed_out && meta.total_validas === 0) {
+    if (meta.total_validas === 0) {
       return res.status(504).json({
         erro: "busca_timeout",
         mensagem: "A busca demorou demais. Tente novamente.",
