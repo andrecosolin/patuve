@@ -42,7 +42,7 @@ module.exports = async function joobleService(cargo, cidade) {
     const jobs = Array.isArray(json.jobs) ? json.jobs : [];
 
     return jobs
-      .filter((j) => j.link && String(j.link).startsWith("https://"))
+      .filter((j) => j.link && /^https?:\/\//i.test(String(j.link)))
       .map((j) => ({
         titulo: String(j.title ?? "Vaga sem titulo"),
         empresa: j.company ? String(j.company) : null,
