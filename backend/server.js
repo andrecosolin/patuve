@@ -4,7 +4,6 @@ const dotenv = require("dotenv");
 const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const Anthropic = require("@anthropic-ai/sdk");
 
 const { filtrarVagas } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
@@ -15,6 +14,7 @@ const remoteokService = require("./services/remoteokService");
 const jobicyService = require("./services/jobicyService");
 const themuseService = require("./services/themuseService");
 const arbeitnowService = require("./services/arbeitnowService");
+const groqService = require("./services/groqService");
 
 function ordenarPorData(vagas) {
   return [...vagas].sort((a, b) => {
@@ -34,7 +34,6 @@ app.set("trust proxy", 1); // Railway usa proxy reverso
 const port = process.env.PORT ?? 3015;
 
 const MAX_SEARCH_TIME_MS = 55_000;
-const ANTHROPIC_TIMEOUT_MS = 50_000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 const inMemoryCache = new Map();
@@ -53,8 +52,6 @@ const limiter = rateLimit({
   message: { error: "Muitas requisicoes. Tente novamente em 1 minuto.", code: "RATE_LIMIT" },
 });
 
-let anthropicClient = null;
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -66,17 +63,6 @@ function createServerError(message, code = "API_ERROR", status = 500) {
   return error;
 }
 
-function getClient() {
-  if (!anthropicClient) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw createServerError("ANTHROPIC_API_KEY nao configurada no ambiente.", "INVALID_API_KEY", 500);
-    }
-
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-
-  return anthropicClient;
-}
 
 function normalizeFilters(filters) {
   return {
@@ -180,100 +166,6 @@ function expandirSiglas(cargo, tipoContrato) {
   return { cargoExpandido, contratoExpandido };
 }
 
-function buildPrompt({ cargo, cidade, tipoContrato, nivel, modalidade }) {
-  const { cargoExpandido, contratoExpandido } = expandirSiglas(cargo, tipoContrato);
-
-  const preferencias = [
-    tipoContrato !== "Ambos" && `tipo de contrato ${contratoExpandido}`,
-    nivel !== "Todos" && `nivel ${nivel}`,
-    modalidade !== "Todas" && `modalidade ${modalidade}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  const blocoPreferencias = preferencias
-    ? `Preferencias (nao obrigatorias — inclua vagas proximas se nao achar exatas): ${preferencias}.`
-    : "";
-
-  const cargoEhSigla = cargo.trim().length <= 3;
-  const blocoSigla = cargoEhSigla
-    ? `ATENCAO — O cargo buscado e uma sigla curta ("${cargo}"). Busque OBRIGATORIAMENTE por todas as variacoes e sinonimos em portugues e ingles. Por exemplo, se for "QA", busque por: QA, Quality Assurance, Analista de Qualidade, Tester, QA Engineer, Analista QA, Analista de Testes. Inclua cargos relacionados e similares caso nao encontre vagas exatas.\n`
-    : "";
-
-  return `Voce e um especialista em recrutamento. Use suas ferramentas de busca na web para encontrar vagas reais publicadas recentemente.
-
-${blocoSigla}OBJETIVO: Encontrar vagas REAIS para "${cargoExpandido}" com base em "${cidade}".
-${blocoPreferencias}
-
-SITES PRIORITARIOS — busque especificamente nestes:
-- linkedin.com/jobs
-- gupy.io
-- catho.com.br
-- infojobs.com.br
-- vagas.com.br
-- trampos.co
-- programathor.com.br
-- gekhunter.com.br
-- 99jobs.com
-- remotar.com.br
-
-Se nao encontrar vagas suficientes nos sites acima, expanda para outros portais publicos, cidades proximas e vagas remotas.
-Priorize vagas publicadas nos ultimos 30 dias.
-
-REGRAS CRITICAS:
-- Retorne SOMENTE vagas que voce encontrou de verdade — NUNCA invente uma vaga
-- Cada vaga DEVE ter um link direto valido e acessivel (https://) para a pagina especifica da vaga
-- Nao retorne links de paginas de busca generica — apenas paginas de vaga individual
-
-CAMPOS OBRIGATORIOS por vaga:
-- titulo: nome exato do cargo como aparece na vaga
-- empresa: nome da empresa (null se anonima)
-- localizacao: cidade/estado ou "Remoto"
-- tipo_contrato: "CLT", "PJ", "Estagio", "Freelance", "Trainee" ou null
-- modalidade: "Remoto", "Hibrido" ou "Presencial" ou null
-- descricao_curta: resumo de ate 200 caracteres com stack e diferenciais
-- link_direto: URL direta da pagina da vaga (https://)
-- fonte: nome do site onde a vaga foi encontrada
-- data_publicacao: formato OBRIGATORIO "YYYY-MM-DD" (ex: "2025-07-28") ou null — NUNCA retorne datas relativas como "ha 2 dias" ou formato DD/MM/AAAA
-
-Retorne APENAS um JSON array valido, sem texto adicional, sem markdown.`;
-}
-
-
-const TOOLS = [
-  {
-    type: "web_search_20250305",
-    name: "web_search",
-    max_uses: 20,
-    user_location: {
-      type: "approximate",
-      country: "BR",
-      timezone: "America/Sao_Paulo",
-    },
-  },
-];
-
-async function callClaude(messages) {
-  return getClient().messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
-    messages,
-    tools: TOOLS,
-  });
-}
-
-async function runUntilDone(initialMessages) {
-  let messages = initialMessages;
-  let response = await callClaude(messages);
-
-  while (response.stop_reason === "pause_turn") {
-    messages = [...messages, { role: "assistant", content: response.content }];
-    response = await callClaude(messages);
-  }
-
-  return { response, messages };
-}
-
 function withTimeout(task, timeoutMs, label) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -296,24 +188,6 @@ function remainingMs(deadline) {
   return Math.max(0, deadline - Date.now());
 }
 
-function extractText(response) {
-  return response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-}
-
-function extractJsonArray(text) {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-
-  if (start === -1 || end === -1) {
-    throw createServerError("Nenhum array JSON encontrado na resposta do modelo.", "EMPTY_RESPONSE", 502);
-  }
-
-  return JSON.parse(text.slice(start, end + 1));
-}
 
 const FONTES_CONHECIDAS = [
   "LinkedIn", "Gupy", "Indeed", "Catho", "InfoJobs", "Vagas.com", "trampos.co",
@@ -361,7 +235,7 @@ function normalizeVagas(rawArray) {
   }
 
   return rawArray
-    .filter((item) => item && typeof item.link_direto === "string" && item.link_direto.startsWith("https://"))
+    .filter((item) => item && typeof item.link_direto === "string" && /^https?:\/\//i.test(item.link_direto))
     .map((item) => ({
       id: item.id ? String(item.id) : randomUUID(),
       titulo: String(item.titulo ?? "Vaga sem titulo"),
@@ -376,23 +250,6 @@ function normalizeVagas(rawArray) {
     }));
 }
 
-function mapAnthropicError(error) {
-  const sourceCode = error?.error?.type ?? error?.code;
-
-  if (sourceCode === "authentication_error") {
-    return createServerError("A chave da API da Anthropic e invalida ou nao tem permissao.", "INVALID_API_KEY", 401);
-  }
-
-  if (sourceCode === "billing_error") {
-    return createServerError("A conta Anthropic esta sem creditos para concluir a busca.", "API_ERROR", 402);
-  }
-
-  if (sourceCode === "timeout_error") {
-    return createServerError("A Anthropic demorou demais para responder.", "API_ERROR", 504);
-  }
-
-  return createServerError(error?.message ?? "Falha ao consultar a Anthropic.", sourceCode ?? "API_ERROR", error?.status ?? 500);
-}
 
 function deduplicarPorLink(vagas) {
   const seen = new Set();
@@ -404,19 +261,6 @@ function deduplicarPorLink(vagas) {
   });
 }
 
-async function buscarAnthropicParalelo(filters) {
-  const started = Date.now();
-  try {
-    const { response } = await withTimeout(
-      () => runUntilDone([{ role: "user", content: buildPrompt(filters) }]),
-      ANTHROPIC_TIMEOUT_MS,
-      "busca Anthropic"
-    );
-    return normalizeVagas(extractJsonArray(extractText(response)));
-  } catch (err) {
-    throw new Error(`Anthropic falhou: ${err.message}`);
-  }
-}
 
 function extrairResultado(settled, nome) {
   if (settled.status === "fulfilled") {
@@ -455,10 +299,10 @@ async function buscarVagasComPipeline(filters) {
     jobicyService(cargoEn),
     themuseService(cargoEn),
     arbeitnowService(cargoEn),
-    buscarAnthropicParalelo(filters), // usa cargoPt via filters.cargo
+    groqService(cargoPt, filters.cidade),
   ]);
 
-  const nomes = ["Jooble", "Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Anthropic"];
+  const nomes = ["Jooble", "Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Groq"];
   let fontesFalharam = 0;
 
   const todasBrutas = [];
@@ -564,20 +408,15 @@ app.post("/buscar-vagas", limiter, async (req, res) => {
 
     return res.json({ ...payload, cache: false });
   } catch (error) {
-    const mappedError = error?.error?.type
-      ? mapAnthropicError(error)
-      : error?.code
-        ? error
-        : createServerError(error?.message ?? "Falha ao buscar vagas. Tente novamente em instantes.");
+    const mappedError = error?.code
+      ? error
+      : createServerError(error?.message ?? "Falha ao buscar vagas. Tente novamente em instantes.");
 
     const status = mappedError?.status ?? 500;
     const code = mappedError?.code ?? "API_ERROR";
-    const message =
-      code === "INVALID_API_KEY"
-        ? "A chave da API da Anthropic e invalida ou nao tem permissao."
-        : code === "EMPTY_RESPONSE"
-          ? "A IA nao retornou vagas validas para esta busca."
-          : mappedError?.message ?? "Falha ao buscar vagas. Tente novamente em instantes.";
+    const message = code === "EMPTY_RESPONSE"
+      ? "A busca nao retornou vagas validas."
+      : mappedError?.message ?? "Falha ao buscar vagas. Tente novamente em instantes.";
 
     console.error("[buscar-vagas] Erro:", mappedError?.message ?? error);
     return res.status(status).json({
