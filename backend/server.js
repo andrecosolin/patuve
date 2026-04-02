@@ -105,6 +105,7 @@ function cleanupExpiredCache() {
 setInterval(cleanupExpiredCache, 60_000).unref();
 
 const EXPANSOES_SIGLAS = {
+  // Tecnologia
   "\\bQA\\b": "QA Quality Assurance Analista de Qualidade Tester",
   "\\bDev\\b": "Desenvolvedor Developer Programador",
   "\\bUI\\b": "UI Design Interface",
@@ -113,6 +114,34 @@ const EXPANSOES_SIGLAS = {
   "\\bDBA\\b": "DBA Administrador de Banco de Dados Database",
   "\\bSRE\\b": "SRE Site Reliability Engineer DevOps",
   "\\bML\\b": "ML Machine Learning Inteligencia Artificial",
+  "\\bTI\\b": "TI Tecnologia da Informacao Informatica",
+  "\\bPO\\b": "PO Product Owner Dono do Produto",
+  "\\bSM\\b": "SM Scrum Master Agile Coach",
+  "\\bTA\\b": "TA Tech Lead Lider Tecnico",
+  // Negocios e gestao
+  "\\bRH\\b": "RH Recursos Humanos Gestao de Pessoas People",
+  "\\bCS\\b": "CS Customer Success Sucesso do Cliente",
+  "\\bSDR\\b": "SDR Sales Development Representative Pre-vendas Prospeccao",
+  "\\bBDR\\b": "BDR Business Development Representative Desenvolvimento de Negocios",
+  "\\bCRM\\b": "CRM Customer Relationship Management Relacionamento com Cliente",
+  "\\bMKT\\b": "MKT Marketing",
+  "\\bCOO\\b": "COO Chief Operating Officer Diretor de Operacoes",
+  "\\bCFO\\b": "CFO Chief Financial Officer Diretor Financeiro",
+  "\\bCTO\\b": "CTO Chief Technology Officer Diretor de Tecnologia",
+  "\\bCEO\\b": "CEO Chief Executive Officer Diretor Executivo",
+  // Financeiro e contabil
+  "\\bDP\\b": "DP Departamento Pessoal Folha de Pagamento RH",
+  "\\bFP\\b": "FP Financeiro Contas a Pagar Contas a Receber",
+  "\\bCONT\\b": "CONT Contabilidade Contador Fiscal",
+  // Saude
+  "\\bTEC\\b": "Tecnico Tecnologo",
+  "\\bENF\\b": "Enfermeiro Enfermagem Tecnico de Enfermagem",
+  "\\bFISIO\\b": "Fisioterapeuta Fisioterapia Reabilitacao",
+  // Industria e logistica
+  "\\bPCP\\b": "PCP Planejamento e Controle da Producao Producao Industrial",
+  "\\bSGQ\\b": "SGQ Sistema de Gestao da Qualidade Qualidade Industrial ISO",
+  "\\bSST\\b": "SST Saude e Seguranca do Trabalho CIPA",
+  "\\bWMS\\b": "WMS Warehouse Management System Logistica Estoque",
 };
 
 const EXPANSOES_CONTRATO = {
