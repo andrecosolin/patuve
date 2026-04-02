@@ -5,9 +5,11 @@ import { validateVagasArray } from "@/utils/validators";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? "https://patuve-backend-production.up.railway.app";
 
+console.log("BACKEND_URL:", BACKEND_URL);
+
 const api = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 20_000,
+  timeout: 70_000,
 });
 
 type BuscarVagasResponse = {

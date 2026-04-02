@@ -14,6 +14,7 @@
     "android": {
       "package": "com.patuve.app",
       "versionCode": 2,
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0f"
