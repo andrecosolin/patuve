@@ -71,7 +71,7 @@ export function SearchForm({ filters, onChange, onSubmit, loading }: SearchFormP
   return (
     <View style={styles.container}>
       <View style={styles.brandRow}>
-        <Text style={styles.brand}>PATUV�</Text>
+        <Text style={styles.brand}>PATUVÊ</Text>
         <Text style={styles.subtitle}>Pra tu ver a vaga certa.</Text>
       </View>
 
@@ -95,7 +95,7 @@ export function SearchForm({ filters, onChange, onSubmit, loading }: SearchFormP
           <Ionicons color={colors.muted} name="location-outline" size={18} />
           <TextInput
             onChangeText={(text) => updateField("cidade", text)}
-            placeholder="Ex.: Sao Paulo"
+            placeholder="Ex.: São Paulo"
             placeholderTextColor={colors.muted}
             style={styles.input}
             value={filters.cidade}
