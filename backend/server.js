@@ -8,6 +8,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 
 const { filtrarVagas } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
+const { traduzirCargo } = require("./utils/traduzirCargo");
 const joobleService = require("./services/joobleService");
 const himalayasService = require("./services/himalayasService");
 const remoteokService = require("./services/remoteokService");
@@ -438,15 +439,22 @@ async function buscarVagasComPipeline(filters) {
   let removidasFiltro = 0;
   let removidasLink = 0;
 
-  // ETAPA 1 — Busca paralela em TODAS as fontes (allSettled: nunca cancela)
+  // ETAPA 1 — Tradução do cargo para as APIs internacionais
+  const { cargoEn, cargoPt } = traduzirCargo(filters.cargo);
+  console.log(`[pipeline] Cargo original: "${cargoPt}"`);
+  if (cargoEn !== cargoPt.toLowerCase().trim()) {
+    console.log(`[pipeline] Cargo traduzido: "${cargoEn}"`);
+  }
+
+  // Busca paralela em TODAS as fontes (allSettled: nunca cancela)
   const resultados = await Promise.allSettled([
-    joobleService(filters.cargo, filters.cidade),
-    himalayasService(filters.cargo),
-    remoteokService(filters.cargo),
-    jobicyService(filters.cargo),
-    themuseService(filters.cargo),
-    arbeitnowService(filters.cargo),
-    buscarAnthropicParalelo(filters),
+    joobleService(cargoEn, filters.cidade),
+    himalayasService(cargoEn),
+    remoteokService(cargoEn),
+    jobicyService(cargoEn),
+    themuseService(cargoEn),
+    arbeitnowService(cargoEn),
+    buscarAnthropicParalelo(filters), // usa cargoPt via filters.cargo
   ]);
 
   const nomes = ["Jooble", "Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Anthropic"];
