@@ -283,31 +283,50 @@ async function buscarVagasComPipeline(filters) {
   let removidasFiltro = 0;
   let removidasLink = 0;
 
-  // ETAPA 1 — Tradução do cargo para as APIs internacionais
+  // Tradução do cargo para as APIs internacionais
   const { cargoEn, cargoPt } = traduzirCargo(filters.cargo);
   console.log(`[pipeline] Cargo original: "${cargoPt}"`);
   if (cargoEn !== cargoPt.toLowerCase().trim()) {
     console.log(`[pipeline] Cargo traduzido: "${cargoEn}"`);
   }
 
-  // Busca paralela em TODAS as fontes (allSettled: nunca cancela)
-  // Jooble suporta português — usa cargoPt. Demais APIs são en-only — usam cargoEn.
-  const resultados = await Promise.allSettled([
-    joobleService(cargoPt, filters.cidade),
+  // ETAPA 1 — Groq gera sinônimos em paralelo com APIs internacionais
+  const [sinonimosResult, ...apisResults] = await Promise.allSettled([
+    groqService(cargoPt),
     himalayasService(cargoEn),
     remoteokService(cargoEn),
     jobicyService(cargoEn),
     themuseService(cargoEn),
     arbeitnowService(cargoEn),
-    groqService(cargoPt, filters.cidade),
   ]);
 
-  const nomes = ["Jooble", "Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Groq"];
-  let fontesFalharam = 0;
+  const sinonimos = sinonimosResult.status === "fulfilled" ? sinonimosResult.value : [cargoPt];
+  console.log(`[pipeline] Groq sinonimos: ${JSON.stringify(sinonimos)}`);
 
+  // ETAPA 2 — Jooble busca cada sinônimo + cidade em PT-BR
+  const joobleResults = await Promise.allSettled(
+    sinonimos.map((s) => joobleService(s, filters.cidade))
+  );
+
+  const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow"];
+  let fontesFalharam = 0;
   const todasBrutas = [];
-  for (let i = 0; i < resultados.length; i++) {
-    const { vagas, falhou } = extrairResultado(resultados[i], nomes[i]);
+
+  // Coleta resultados do Jooble
+  let totalJooble = 0;
+  for (const r of joobleResults) {
+    if (r.status === "fulfilled" && Array.isArray(r.value)) {
+      totalJooble += r.value.length;
+      todasBrutas.push(...r.value);
+    } else if (r.status === "rejected") {
+      fontesFalharam++;
+    }
+  }
+  console.log(`[pipeline] Jooble: ${totalJooble} vagas (${sinonimos.length} buscas)`);
+
+  // Coleta resultados das APIs internacionais
+  for (let i = 0; i < apisResults.length; i++) {
+    const { vagas, falhou } = extrairResultado(apisResults[i], nomesApis[i]);
     if (falhou) fontesFalharam++;
     todasBrutas.push(...vagas);
   }
