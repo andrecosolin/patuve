@@ -7,14 +7,13 @@ const rateLimit = require("express-rate-limit");
 
 const { filtrarVagas } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
-const { traduzirCargo } = require("./utils/traduzirCargo");
+const buildQuery = require("./utils/queryBuilder");
 const joobleService = require("./services/joobleService");
 const himalayasService = require("./services/himalayasService");
 const remoteokService = require("./services/remoteokService");
 const jobicyService = require("./services/jobicyService");
 const themuseService = require("./services/themuseService");
 const arbeitnowService = require("./services/arbeitnowService");
-const groqService = require("./services/groqService");
 const adzunaService = require("./services/adzunaService");
 
 function ordenarPorData(vagas) {
@@ -110,62 +109,6 @@ function cleanupExpiredCache() {
 
 setInterval(cleanupExpiredCache, 60_000).unref();
 
-const EXPANSOES_SIGLAS = {
-  // Tecnologia
-  "\\bQA\\b": "QA Quality Assurance Analista de Qualidade Tester",
-  "\\bDev\\b": "Desenvolvedor Developer Programador",
-  "\\bUI\\b": "UI Design Interface",
-  "\\bUX\\b": "UX User Experience Design",
-  "\\bBI\\b": "BI Business Intelligence Analista de Dados",
-  "\\bDBA\\b": "DBA Administrador de Banco de Dados Database",
-  "\\bSRE\\b": "SRE Site Reliability Engineer DevOps",
-  "\\bML\\b": "ML Machine Learning Inteligencia Artificial",
-  "\\bTI\\b": "TI Tecnologia da Informacao Informatica",
-  "\\bPO\\b": "PO Product Owner Dono do Produto",
-  "\\bSM\\b": "SM Scrum Master Agile Coach",
-  "\\bTA\\b": "TA Tech Lead Lider Tecnico",
-  // Negocios e gestao
-  "\\bRH\\b": "RH Recursos Humanos Gestao de Pessoas People",
-  "\\bCS\\b": "CS Customer Success Sucesso do Cliente",
-  "\\bSDR\\b": "SDR Sales Development Representative Pre-vendas Prospeccao",
-  "\\bBDR\\b": "BDR Business Development Representative Desenvolvimento de Negocios",
-  "\\bCRM\\b": "CRM Customer Relationship Management Relacionamento com Cliente",
-  "\\bMKT\\b": "MKT Marketing",
-  "\\bCOO\\b": "COO Chief Operating Officer Diretor de Operacoes",
-  "\\bCFO\\b": "CFO Chief Financial Officer Diretor Financeiro",
-  "\\bCTO\\b": "CTO Chief Technology Officer Diretor de Tecnologia",
-  "\\bCEO\\b": "CEO Chief Executive Officer Diretor Executivo",
-  // Financeiro e contabil
-  "\\bDP\\b": "DP Departamento Pessoal Folha de Pagamento RH",
-  "\\bFP\\b": "FP Financeiro Contas a Pagar Contas a Receber",
-  "\\bCONT\\b": "CONT Contabilidade Contador Fiscal",
-  // Saude
-  "\\bTEC\\b": "Tecnico Tecnologo",
-  "\\bENF\\b": "Enfermeiro Enfermagem Tecnico de Enfermagem",
-  "\\bFISIO\\b": "Fisioterapeuta Fisioterapia Reabilitacao",
-  // Industria e logistica
-  "\\bPCP\\b": "PCP Planejamento e Controle da Producao Producao Industrial",
-  "\\bSGQ\\b": "SGQ Sistema de Gestao da Qualidade Qualidade Industrial ISO",
-  "\\bSST\\b": "SST Saude e Seguranca do Trabalho CIPA",
-  "\\bWMS\\b": "WMS Warehouse Management System Logistica Estoque",
-};
-
-const EXPANSOES_CONTRATO = {
-  PJ: "PJ Pessoa Juridica Freelancer Autonomo",
-  CLT: "CLT Carteira Assinada Emprego Formal",
-  Estagio: "Estagio Trainee Aprendiz",
-  Freelance: "Freelance Autonomo PJ Projeto",
-};
-
-function expandirSiglas(cargo, tipoContrato) {
-  let cargoExpandido = cargo;
-  for (const [padrao, expansao] of Object.entries(EXPANSOES_SIGLAS)) {
-    cargoExpandido = cargoExpandido.replace(new RegExp(padrao, "i"), expansao);
-  }
-
-  const contratoExpandido = EXPANSOES_CONTRATO[tipoContrato] ?? tipoContrato;
-  return { cargoExpandido, contratoExpandido };
-}
 
 function withTimeout(task, timeoutMs, label) {
   return new Promise((resolve, reject) => {
@@ -284,51 +227,56 @@ async function buscarVagasComPipeline(filters) {
   let removidasFiltro = 0;
   let removidasLink = 0;
 
-  // Tradução do cargo para as APIs internacionais
-  const { cargoEn, cargoPt } = traduzirCargo(filters.cargo);
-  console.log(`[pipeline] Cargo original: "${cargoPt}"`);
-  if (cargoEn !== cargoPt.toLowerCase().trim()) {
-    console.log(`[pipeline] Cargo traduzido: "${cargoEn}"`);
-  }
+  // ETAPA 1 — Query Builder (Groq) + APIs internacionais em paralelo
+  const [queryResult, ...apisResults] = await Promise.allSettled([
+    buildQuery(filters.cargo, filters.cidade),
+    himalayasService,
+    remoteokService,
+    jobicyService,
+    themuseService,
+    arbeitnowService,
+    adzunaService,
+  ].map((fn, i) => {
+    if (i === 0) return fn(filters.cargo, filters.cidade);
+    // placeholder — será substituído após query estar pronta
+    return Promise.resolve([]);
+  }));
 
-  // ETAPA 1 — Groq gera sinônimos em paralelo com APIs internacionais
-  const [sinonimosResult, ...apisResults] = await Promise.allSettled([
-    groqService(cargoPt),
-    himalayasService(cargoEn),
-    remoteokService(cargoEn),
-    jobicyService(cargoEn),
-    themuseService(cargoEn),
-    arbeitnowService(cargoEn),
-    adzunaService(cargoEn, filters.cidade),
-  ]);
+  const query = queryResult.status === "fulfilled" ? queryResult.value : {
+    pt_query: filters.cargo,
+    en_query: filters.cargo,
+    is_remote: false,
+    adzuna_country: "br",
+    tags: [filters.cargo],
+  };
 
-  const sinonimos = sinonimosResult.status === "fulfilled" ? sinonimosResult.value : [cargoPt];
-  console.log(`[pipeline] Groq sinonimos: ${JSON.stringify(sinonimos)}`);
+  console.log(`[pipeline] Query builder: ${JSON.stringify(query)}`);
 
-  // ETAPA 2 — Jooble busca cada sinônimo + cidade em PT-BR
-  const joobleResults = await Promise.allSettled(
-    sinonimos.map((s) => joobleService(s, filters.cidade))
-  );
+  // ETAPA 2 — Busca paralela com queries otimizadas
+  const tag = query.tags[0] ?? query.en_query;
+  const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
+    await Promise.allSettled([
+      joobleService(query.pt_query, filters.cidade),
+      himalayasService(tag),
+      remoteokService(tag),
+      jobicyService(tag),
+      themuseService(query.en_query),
+      arbeitnowService(query.en_query),
+      adzunaService(query.pt_query, filters.cidade),
+    ]);
 
   const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Adzuna"];
   let fontesFalharam = 0;
   const todasBrutas = [];
 
-  // Coleta resultados do Jooble
-  let totalJooble = 0;
-  for (const r of joobleResults) {
-    if (r.status === "fulfilled" && Array.isArray(r.value)) {
-      totalJooble += r.value.length;
-      todasBrutas.push(...r.value);
-    } else if (r.status === "rejected") {
-      fontesFalharam++;
-    }
-  }
-  console.log(`[pipeline] Jooble: ${totalJooble} vagas (${sinonimos.length} buscas)`);
+  // Jooble
+  const { vagas: vagasJooble, falhou: joobleF } = extrairResultado(joobleSettled, "Jooble");
+  if (joobleF) fontesFalharam++;
+  todasBrutas.push(...vagasJooble);
 
-  // Coleta resultados das APIs internacionais
-  for (let i = 0; i < apisResults.length; i++) {
-    const { vagas, falhou } = extrairResultado(apisResults[i], nomesApis[i]);
+  // APIs internacionais
+  for (const [i, settled] of [himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled].entries()) {
+    const { vagas, falhou } = extrairResultado(settled, nomesApis[i]);
     if (falhou) fontesFalharam++;
     todasBrutas.push(...vagas);
   }
