@@ -15,6 +15,7 @@ const jobicyService = require("./services/jobicyService");
 const themuseService = require("./services/themuseService");
 const arbeitnowService = require("./services/arbeitnowService");
 const groqService = require("./services/groqService");
+const adzunaService = require("./services/adzunaService");
 
 function ordenarPorData(vagas) {
   return [...vagas].sort((a, b) => {
@@ -298,6 +299,7 @@ async function buscarVagasComPipeline(filters) {
     jobicyService(cargoEn),
     themuseService(cargoEn),
     arbeitnowService(cargoEn),
+    adzunaService(cargoEn, filters.cidade),
   ]);
 
   const sinonimos = sinonimosResult.status === "fulfilled" ? sinonimosResult.value : [cargoPt];
@@ -308,7 +310,7 @@ async function buscarVagasComPipeline(filters) {
     sinonimos.map((s) => joobleService(s, filters.cidade))
   );
 
-  const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow"];
+  const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Adzuna"];
   let fontesFalharam = 0;
   const todasBrutas = [];
 
