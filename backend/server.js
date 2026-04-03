@@ -229,7 +229,7 @@ async function buscarVagasComPipeline(filters) {
 
   // ETAPA 1 — Query Builder (Groq) + APIs internacionais em paralelo
   const [queryResult, ...apisResults] = await Promise.allSettled([
-    buildQuery(filters.cargo, filters.cidade),
+    buildQuery,
     himalayasService,
     remoteokService,
     jobicyService,
