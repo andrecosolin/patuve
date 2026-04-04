@@ -55,7 +55,7 @@ module.exports = async function joobleService(cargo, cidade) {
       .map((j) => ({
         titulo: String(j.title ?? "Vaga sem titulo"),
         empresa: j.company ? String(j.company) : null,
-        localizacao: cidade || String(j.location ?? "Brasil"),
+        localizacao: String(j.location ?? cidade ?? "Brasil"),
         tipo_contrato: null,
         modalidade: mapModalidade(j.type),
         descricao_curta: stripHtml(j.snippet).slice(0, 200),
