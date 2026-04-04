@@ -1,12 +1,8 @@
 /**
- * Formata a data de candidatura (ISO string) para exibição no card.
- * Ex: "2024-07-28T14:30:00Z" → "Candidatado em 28/07"
+ * Retorna o label exibido no card após o usuário abrir a vaga.
  */
-export function formatarDataCandidatura(isoString: string): string {
-  const date = new Date(isoString);
-  const d = String(date.getDate()).padStart(2, "0");
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  return `Candidatado em ${d}/${m}`;
+export function formatarDataCandidatura(_isoString: string): string {
+  return "Visualizada";
 }
 
 /**
