@@ -40,7 +40,12 @@ function isCidadeBrasileira(cidade) {
   if (!cidade) return null;
   if (!cidadesSet || cidadesSet.size === 0) return null;
 
-  const cidadeNorm = normalizar(String(cidade).split(",")[0].trim());
+  // "Brasil" e "Remoto" não são municípios — tratados como contexto nacional/remoto
+  const cidadeRaw = String(cidade).trim();
+  if (/^(brasil|brazil)$/i.test(cidadeRaw)) return true;
+  if (/^(remoto|remote)$/i.test(cidadeRaw)) return null; // remoto não tem país fixo
+
+  const cidadeNorm = normalizar(cidadeRaw.split(",")[0].trim());
 
   if (cidadesSet.has(cidadeNorm)) return true;
 

@@ -312,6 +312,13 @@ async function buscarVagasComPipeline(filters) {
     tags: [filters.cargo],
   };
 
+  // Força is_remote se usuário selecionou modalidade Remoto ou digitou "Brasil"/"Remoto" na cidade
+  const cidadePareceRemoto = /^(brasil|brazil|remoto|remote)$/i.test(filters.cidade.trim());
+  const modalidadeRemoto = filters.modalidade === "Remoto";
+  if (cidadePareceRemoto || modalidadeRemoto) {
+    query.is_remote = true;
+  }
+
   console.log(`[pipeline] Query builder: ${JSON.stringify(query)}`);
 
   // ETAPA 2 — Busca paralela com queries otimizadas
