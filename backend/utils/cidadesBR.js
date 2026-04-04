@@ -2,8 +2,6 @@
  * Carrega municípios brasileiros via IBGE para validação geográfica.
  */
 
-const axios = require("axios");
-
 let cidadesSet = null;
 
 function normalizar(str) {
@@ -16,17 +14,22 @@ function normalizar(str) {
 }
 
 async function carregarCidades() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     console.log("[ibge] Carregando municipios brasileiros...");
-    const resp = await axios.get(
+    const res = await fetch(
       "https://servicodados.ibge.gov.br/api/v1/localidades/municipios",
-      { timeout: 10_000 }
+      { signal: controller.signal }
     );
-    cidadesSet = new Set(resp.data.map((c) => normalizar(c.nome)));
+    const data = await res.json();
+    cidadesSet = new Set(data.map((c) => normalizar(c.nome)));
     console.log(`[ibge] ${cidadesSet.size} municipios carregados.`);
   } catch (erro) {
     console.error("[ibge] Erro ao carregar:", erro.message);
     cidadesSet = new Set();
+  } finally {
+    clearTimeout(timer);
   }
 }
 
