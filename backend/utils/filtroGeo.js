@@ -30,10 +30,11 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
       return false;
     }
 
-    // Indeterminado (cidade desconhecida): assume brasileira e corrige localização
+    // Indeterminado (cidade não reconhecida pelo IBGE): descarta
+    // Preferível mostrar zero vagas a mostrar vaga errada de Austin/Columbia/etc.
     if (ehBR === null) {
-      vaga.localizacao = cidadeUsuario;
-      return true;
+      removidas++;
+      return false;
     }
 
     return true;

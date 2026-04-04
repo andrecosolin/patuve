@@ -27,6 +27,13 @@ module.exports = async function joobleService(cargo, cidade) {
   const apiKey = process.env.JOOBLE_API_KEY;
   if (!apiKey) return [];
 
+  const isRemoto = /remoto|remote/i.test(cidade ?? "");
+
+  // Para buscas locais: força ", Brasil" no final para reduzir resultados americanos
+  const keywords = isRemoto
+    ? cargo
+    : `${cargo} ${cidade}, Brasil`.trim();
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -34,8 +41,7 @@ module.exports = async function joobleService(cargo, cidade) {
     const res = await fetch(`https://jooble.org/api/${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // keywords: cargo + cidade concatenados — location da API gratuita não funciona
-      body: JSON.stringify({ keywords: `${cargo} ${cidade}`.trim(), resultsOnPage: 20 }),
+      body: JSON.stringify({ keywords, resultsOnPage: 20 }),
       signal: controller.signal,
     });
 
