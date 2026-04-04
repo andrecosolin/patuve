@@ -24,12 +24,11 @@ module.exports = async function adzunaService(cargo, cidade) {
       results_per_page: "20",
       what: cargo,
       where: cidade,
-      content_type: "application/json",
     });
 
     const res = await fetch(
       `https://api.adzuna.com/v1/api/jobs/br/search/1?${params}`,
-      { signal: controller.signal }
+      { signal: controller.signal, headers: { Accept: "application/json" } }
     );
 
     if (!res.ok) return [];
