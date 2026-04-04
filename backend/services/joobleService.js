@@ -32,8 +32,8 @@ module.exports = async function joobleService(cargo, cidade) {
     const res = await fetch(`https://jooble.org/api/${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // keywords: só o cargo — cidade separada em location para não virar keyword de texto
-      body: JSON.stringify({ keywords: cargo, location: cidade ?? "", resultsOnPage: 20 }),
+      // keywords: cargo + cidade concatenados — location da API gratuita não funciona
+      body: JSON.stringify({ keywords: `${cargo} ${cidade}`.trim(), resultsOnPage: 20 }),
       signal: controller.signal,
     });
 
