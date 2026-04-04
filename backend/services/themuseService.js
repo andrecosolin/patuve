@@ -3,6 +3,8 @@
  * Filtra resultados pelo cargo buscado.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 function toIsoDate(str) {
@@ -42,7 +44,7 @@ module.exports = async function themuseService(cargo) {
         localizacao: Array.isArray(j.locations) && j.locations.length > 0 ? String(j.locations[0].name) : "Remoto",
         tipo_contrato: null,
         modalidade: "Remoto",
-        descricao_curta: String(j.contents ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+        descricao_curta: stripHtml(j.contents).slice(0, 200),
         link_direto: String(j.refs.landing_page),
         fonte: "The Muse",
         data_publicacao: toIsoDate(j.publication_date),

@@ -3,6 +3,8 @@
  * Filtra resultados pelo cargo buscado.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 function toIsoDate(epoch) {
@@ -41,7 +43,7 @@ module.exports = async function arbeitnowService(cargo) {
         localizacao: j.remote ? "Remoto" : String(j.location ?? "Brasil"),
         tipo_contrato: null,
         modalidade: j.remote ? "Remoto" : null,
-        descricao_curta: String(j.description ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+        descricao_curta: stripHtml(j.description).slice(0, 200),
         link_direto: String(j.url),
         fonte: "Arbeitnow",
         data_publicacao: toIsoDate(j.created_at),

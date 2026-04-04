@@ -3,6 +3,8 @@
  * Agrega vagas de múltiplos portais brasileiros.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 module.exports = async function adzunaService(cargo, cidade) {
@@ -44,7 +46,7 @@ module.exports = async function adzunaService(cargo, cidade) {
         localizacao: String(v.location?.display_name ?? cidade ?? "Brasil"),
         tipo_contrato: null,
         modalidade: null,
-        descricao_curta: String(v.description ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+        descricao_curta: stripHtml(v.description).slice(0, 200),
         link_direto: String(v.redirect_url),
         fonte: "Adzuna",
         data_publicacao: v.created ? String(v.created).slice(0, 10) : null,

@@ -3,6 +3,8 @@
  * Retorna vagas do agregador global Jooble.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 function toIsoDate(str) {
@@ -50,7 +52,7 @@ module.exports = async function joobleService(cargo, cidade) {
         localizacao: cidade || String(j.location ?? "Brasil"),
         tipo_contrato: null,
         modalidade: mapModalidade(j.type),
-        descricao_curta: String(j.snippet ?? "").slice(0, 200),
+        descricao_curta: stripHtml(j.snippet).slice(0, 200),
         link_direto: String(j.link),
         fonte: "Jooble",
         data_publicacao: toIsoDate(j.updated),

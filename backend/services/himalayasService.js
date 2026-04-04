@@ -3,6 +3,8 @@
  * Vagas remotas internacionais.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 function toIsoDate(epochSeconds) {
@@ -36,7 +38,7 @@ module.exports = async function himalayasService(cargo) {
         localizacao: "Remoto",
         tipo_contrato: null,
         modalidade: "Remoto",
-        descricao_curta: String(j.description ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+        descricao_curta: stripHtml(j.description).slice(0, 200),
         link_direto: String(j.url),
         fonte: "Himalayas",
         data_publicacao: toIsoDate(j.createdAt),

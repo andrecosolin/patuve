@@ -3,6 +3,8 @@
  * O primeiro elemento do array é metadata — deve ser ignorado.
  */
 
+const stripHtml = require("../utils/stripHtml");
+
 const TIMEOUT_MS = 8_000;
 
 function toIsoDate(epoch) {
@@ -39,7 +41,7 @@ module.exports = async function remoteokService(cargo) {
         localizacao: "Remoto",
         tipo_contrato: null,
         modalidade: "Remoto",
-        descricao_curta: String(j.description ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+        descricao_curta: stripHtml(j.description).slice(0, 200),
         link_direto: String(j.url),
         fonte: "RemoteOK",
         data_publicacao: toIsoDate(j.epoch),
