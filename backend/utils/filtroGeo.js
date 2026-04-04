@@ -20,16 +20,12 @@ function temSiglaAmericana(localizacao) {
   return match ? SIGLAS_ESTADOS_EUA.has(match[1]) : false;
 }
 
+// Localizações genéricas aceitas sempre — não indicam país estrangeiro
+const LOCALIZACOES_NEUTRAS = /^(remoto|remote|brasil|brazil|home\s*office|anywhere|worldwide|global)$/i;
+
 function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
-  // Busca remota: sem filtro geográfico
-  if (isRemoto) return vagas;
-
-  // IBGE ainda não carregou: passa tudo (benefício da dúvida)
-  const buscaBrasil = isCidadeBrasileira(cidadeUsuario);
-  if (buscaBrasil === null) return vagas;
-
-  // Cidade do usuário não é brasileira: sem filtro
-  if (!buscaBrasil) return vagas;
+  // Filtro sempre ativo — app serve apenas mercado brasileiro
+  // Para buscas remotas: aceita "Remote"/"Remoto"/"Brasil" mas descarta cidades estrangeiras explícitas
 
   let removidas = 0;
   const resultado = vagas.filter((vaga) => {
@@ -38,14 +34,18 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
       return true;
     }
 
-    // Descarta imediatamente se termina em sigla de estado americano/canadense
-    // Ex: "Toledo, OH", "Columbia, SC", "Jackson, MS"
-    if (temSiglaAmericana(vaga.localizacao)) {
+    const loc = String(vaga.localizacao).trim();
+
+    // Localização neutra (Remote, Brasil, Home Office...) — sempre aceita
+    if (LOCALIZACOES_NEUTRAS.test(loc)) return true;
+
+    // Descarta imediatamente se termina em sigla americana/canadense
+    if (temSiglaAmericana(loc)) {
       removidas++;
       return false;
     }
 
-    const cidadeVaga = String(vaga.localizacao).split(",")[0].trim();
+    const cidadeVaga = loc.split(",")[0].trim();
     const ehBR = isCidadeBrasileira(cidadeVaga);
 
     if (ehBR === false) {
@@ -53,8 +53,9 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
       return false;
     }
 
-    // Indeterminado (cidade não reconhecida pelo IBGE): descarta
+    // Indeterminado: em busca remota aceita (pode ser empresa BR sem cidade), em busca local descarta
     if (ehBR === null) {
+      if (isRemoto) return true;
       removidas++;
       return false;
     }
