@@ -205,6 +205,19 @@ function deduplicarPorLink(vagas) {
   });
 }
 
+function deduplicarPorConteudo(vagas) {
+  const seen = new Set();
+  return vagas.filter((v) => {
+    const titulo = String(v.titulo ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+    const empresa = String(v.empresa ?? "").toLowerCase().trim();
+    if (!titulo || titulo === "vaga sem titulo") return true;
+    const key = `${titulo}|${empresa}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 
 function extrairResultado(settled, nome) {
   if (settled.status === "fulfilled") {
@@ -285,11 +298,11 @@ async function buscarVagasComPipeline(filters) {
   console.log(`[pipeline] Resultado parcial: ${parcial ? `sim (${fontesFalharam} fonte(s) falharam)` : "nao"}`);
   console.log(`[pipeline] Total bruto: ${todasBrutas.length} vagas`);
 
-  vagasBrutas = normalizeVagas(deduplicarPorLink(todasBrutas));
+  vagasBrutas = deduplicarPorConteudo(normalizeVagas(deduplicarPorLink(todasBrutas)));
   console.log(`[pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
 
   // ETAPA 2 — Filtragem
-  const filtered = filtrarVagas(vagasBrutas);
+  const filtered = filtrarVagas(vagasBrutas, filters);
   vagasFiltradas = filtered.vagas;
   removidasFiltro = filtered.removidas;
   console.log(`[pipeline] Apos filtros: ${vagasFiltradas.length} vagas (removidas: ${removidasFiltro})`);

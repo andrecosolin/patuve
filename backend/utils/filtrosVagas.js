@@ -39,14 +39,17 @@ function isLinkValido(url, fonte) {
 /**
  * Aplica todos os filtros estáticos e retorna vagas aprovadas + contagem de removidas.
  */
-function filtrarVagas(vagas) {
+function filtrarVagas(vagas, filtros = {}) {
+  const modalidadeDesejada = filtros.modalidade && filtros.modalidade !== "Todas" ? filtros.modalidade : null;
+  const contratoDesejado = filtros.tipoContrato && filtros.tipoContrato !== "Ambos" ? filtros.tipoContrato : null;
+
   const seen = new Set();
   const aprovadas = [];
   let removidas = 0;
 
   for (const vaga of vagas) {
-    // Link deve começar com https://
-    if (!vaga.link_direto?.startsWith("https://")) {
+    // Link deve ser http:// ou https://
+    if (!vaga.link_direto || !/^https?:\/\//i.test(vaga.link_direto)) {
       removidas++;
       continue;
     }
@@ -71,6 +74,18 @@ function filtrarVagas(vagas) {
 
     // Não aceita empresa nula com fonte desconhecida simultaneamente
     if (!vaga.empresa && vaga.fonte === "Outro") {
+      removidas++;
+      continue;
+    }
+
+    // Filtro de modalidade (só aplica se vaga tem a info)
+    if (modalidadeDesejada && vaga.modalidade && vaga.modalidade !== modalidadeDesejada) {
+      removidas++;
+      continue;
+    }
+
+    // Filtro de tipo contrato (só aplica se vaga tem a info)
+    if (contratoDesejado && vaga.tipo_contrato && vaga.tipo_contrato !== contratoDesejado) {
       removidas++;
       continue;
     }
