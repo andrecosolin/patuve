@@ -266,15 +266,20 @@ async function buscarVagasComPipeline(filters) {
   console.log(`[pipeline] Query builder: ${JSON.stringify(query)}`);
 
   // ETAPA 2 — Busca paralela com queries otimizadas
+  // APIs internacionais só disparam em busca remota — evita vagas de NY/Londres para quem busca em SP
   const tag = query.tags[0] ?? query.en_query;
+  const buscarInternacionais = query.is_remote;
+
+  console.log(`[pipeline] Modo: ${buscarInternacionais ? "remoto (todas as APIs)" : "local (Jooble + Adzuna apenas)"}`);
+
   const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
     await Promise.allSettled([
       joobleService(query.pt_query, filters.cidade),
-      himalayasService(tag),
-      remoteokService(tag),
-      jobicyService(tag),
-      themuseService(query.en_query),
-      arbeitnowService(query.en_query),
+      buscarInternacionais ? himalayasService(tag) : Promise.resolve([]),
+      buscarInternacionais ? remoteokService(tag) : Promise.resolve([]),
+      buscarInternacionais ? jobicyService(tag) : Promise.resolve([]),
+      buscarInternacionais ? themuseService(query.en_query) : Promise.resolve([]),
+      buscarInternacionais ? arbeitnowService(query.en_query) : Promise.resolve([]),
       adzunaService(query.pt_query, filters.cidade),
     ]);
 
@@ -287,10 +292,10 @@ async function buscarVagasComPipeline(filters) {
   if (joobleF) fontesFalharam++;
   todasBrutas.push(...vagasJooble);
 
-  // APIs internacionais
+  // APIs internacionais (só processadas se buscarInternacionais)
   for (const [i, settled] of [himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled].entries()) {
     const { vagas, falhou } = extrairResultado(settled, nomesApis[i]);
-    if (falhou) fontesFalharam++;
+    if (buscarInternacionais && falhou) fontesFalharam++;
     todasBrutas.push(...vagas);
   }
 
