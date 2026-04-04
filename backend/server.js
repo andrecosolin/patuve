@@ -205,17 +205,59 @@ function deduplicarPorLink(vagas) {
   });
 }
 
+// Remove ruídos que APIs adicionam ao título e causam falsas duplicatas
+function limparTitulo(raw) {
+  return String(raw ?? "")
+    .toLowerCase()
+    // Remove termos de modalidade/contrato entre parênteses ou após separadores
+    .replace(/\(?(remoto|home\s*office|híbrido|hibrido|presencial)\)?/gi, "")
+    .replace(/\b(clt|pj|freelance|trainee|estagio|estágio|temporário|temporario|intermitente)\b/gi, "")
+    // Remove separadores e caracteres especiais
+    .replace(/[|\-\/\\–—]/g, " ")
+    // Colapsa espaços
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function limparEmpresa(raw) {
+  return String(raw ?? "")
+    .toLowerCase()
+    .replace(/\b(ltda|s\.a|s\/a|eireli|me|epp|inc|corp|llc)\.?\b/gi, "")
+    .replace(/\.+/g, " ")   // remove pontos soltos (ex: "Ltda." vira espaço)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function deduplicarPorConteudo(vagas) {
-  const seen = new Set();
-  return vagas.filter((v) => {
-    const titulo = String(v.titulo ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-    const empresa = String(v.empresa ?? "").toLowerCase().trim();
-    if (!titulo || titulo === "vaga sem titulo") return true;
-    const key = `${titulo}|${empresa}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const seen = new Map(); // key → índice da vaga escolhida
+  const resultado = [];
+
+  for (const vaga of vagas) {
+    const tituloLimpo = limparTitulo(vaga.titulo);
+    const empresaLimpa = limparEmpresa(vaga.empresa ?? "");
+
+    // Vagas sem título reconhecível passam direto
+    if (!tituloLimpo || tituloLimpo === "vaga sem titulo") {
+      resultado.push(vaga);
+      continue;
+    }
+
+    const key = `${tituloLimpo}|${empresaLimpa}`;
+
+    if (!seen.has(key)) {
+      seen.set(key, resultado.length);
+      resultado.push(vaga);
+    } else {
+      // Duplicata encontrada — mantém a que tiver descrição mais longa
+      const idxExistente = seen.get(key);
+      const existente = resultado[idxExistente];
+      if ((vaga.descricao_curta?.length ?? 0) > (existente.descricao_curta?.length ?? 0)) {
+        resultado[idxExistente] = vaga;
+      }
+    }
+  }
+
+  return resultado;
 }
 
 
