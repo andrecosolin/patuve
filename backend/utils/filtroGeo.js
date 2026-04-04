@@ -4,6 +4,22 @@
 
 const { isCidadeBrasileira } = require("./cidadesBR");
 
+// Siglas de estados americanos (e canadenses) que não existem como siglas brasileiras
+const SIGLAS_ESTADOS_EUA = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+  // Canadá
+  "ON","QC","BC","AB","MB","SK","NS","NB","NL","PE","NT","YT","NU",
+]);
+
+function temSiglaAmericana(localizacao) {
+  // Detecta padrões como "Toledo, OH" ou "San Paulo, TX"
+  const match = String(localizacao).match(/,\s*([A-Z]{2})\s*$/);
+  return match ? SIGLAS_ESTADOS_EUA.has(match[1]) : false;
+}
+
 function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
   // Busca remota: sem filtro geográfico
   if (isRemoto) return vagas;
@@ -22,6 +38,13 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
       return true;
     }
 
+    // Descarta imediatamente se termina em sigla de estado americano/canadense
+    // Ex: "Toledo, OH", "Columbia, SC", "Jackson, MS"
+    if (temSiglaAmericana(vaga.localizacao)) {
+      removidas++;
+      return false;
+    }
+
     const cidadeVaga = String(vaga.localizacao).split(",")[0].trim();
     const ehBR = isCidadeBrasileira(cidadeVaga);
 
@@ -31,7 +54,6 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
     }
 
     // Indeterminado (cidade não reconhecida pelo IBGE): descarta
-    // Preferível mostrar zero vagas a mostrar vaga errada de Austin/Columbia/etc.
     if (ehBR === null) {
       removidas++;
       return false;
