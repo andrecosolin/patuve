@@ -322,20 +322,20 @@ async function buscarVagasComPipeline(filters) {
   console.log(`[pipeline] Query builder: ${JSON.stringify(query)}`);
 
   // ETAPA 2 — Busca paralela com queries otimizadas
-  // APIs internacionais só disparam em busca remota — evita vagas de NY/Londres para quem busca em SP
+  // Versão free: apenas Jooble (keywords + Brasil) e Adzuna (country=br) — sempre mercado brasileiro
+  // APIs internacionais (Himalayas, RemoteOK, etc.) reservadas para o plano Premium
   const tag = query.tags[0] ?? query.en_query;
-  const buscarInternacionais = query.is_remote;
 
-  console.log(`[pipeline] Modo: ${buscarInternacionais ? "remoto (todas as APIs)" : "local (Jooble + Adzuna apenas)"}`);
+  console.log(`[pipeline] Modo free: Jooble + Adzuna (Brasil apenas)`);
 
   const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
     await Promise.allSettled([
       joobleService(query.pt_query, query.cidade_pt),
-      buscarInternacionais ? himalayasService(tag) : Promise.resolve([]),
-      buscarInternacionais ? remoteokService(tag) : Promise.resolve([]),
-      buscarInternacionais ? jobicyService(tag) : Promise.resolve([]),
-      buscarInternacionais ? themuseService(query.en_query) : Promise.resolve([]),
-      buscarInternacionais ? arbeitnowService(query.en_query) : Promise.resolve([]),
+      Promise.resolve([]),
+      Promise.resolve([]),
+      Promise.resolve([]),
+      Promise.resolve([]),
+      Promise.resolve([]),
       adzunaService(query.pt_query, query.cidade_en),
     ]);
 
@@ -348,10 +348,10 @@ async function buscarVagasComPipeline(filters) {
   if (joobleF) fontesFalharam++;
   todasBrutas.push(...vagasJooble);
 
-  // APIs internacionais (só processadas se buscarInternacionais)
+  // Adzuna (único serviço internacional configurado para BR)
   for (const [i, settled] of [himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled].entries()) {
     const { vagas, falhou } = extrairResultado(settled, nomesApis[i]);
-    if (buscarInternacionais && falhou) fontesFalharam++;
+    if (nomesApis[i] === "Adzuna" && falhou) fontesFalharam++;
     todasBrutas.push(...vagas);
   }
 
