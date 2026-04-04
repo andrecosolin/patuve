@@ -8,6 +8,8 @@ const rateLimit = require("express-rate-limit");
 const { filtrarVagas } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
 const buildQuery = require("./utils/queryBuilder");
+const { carregarCidades } = require("./utils/cidadesBR");
+const { filtrarPorPais } = require("./utils/filtroGeo");
 const joobleService = require("./services/joobleService");
 const himalayasService = require("./services/himalayasService");
 const remoteokService = require("./services/remoteokService");
@@ -31,6 +33,9 @@ dotenv.config();
 
 const app = express();
 app.set("trust proxy", 1); // Railway usa proxy reverso
+
+// Carrega municípios brasileiros ao iniciar (usado pelo filtroGeo)
+carregarCidades();
 const port = process.env.PORT ?? 3015;
 
 const MAX_SEARCH_TIME_MS = 55_000;
@@ -300,7 +305,9 @@ async function buscarVagasComPipeline(filters) {
   const query = queryResult.status === "fulfilled" ? queryResult.value : {
     pt_query: filters.cargo,
     en_query: filters.cargo,
-    is_remote: false,
+    cidade_pt: filters.cidade,
+    cidade_en: filters.cidade,
+    is_remote: /remoto|remote/i.test(filters.cidade),
     adzuna_country: "br",
     tags: [filters.cargo],
   };
@@ -316,13 +323,13 @@ async function buscarVagasComPipeline(filters) {
 
   const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
     await Promise.allSettled([
-      joobleService(query.pt_query, filters.cidade),
+      joobleService(query.pt_query, query.cidade_pt),
       buscarInternacionais ? himalayasService(tag) : Promise.resolve([]),
       buscarInternacionais ? remoteokService(tag) : Promise.resolve([]),
       buscarInternacionais ? jobicyService(tag) : Promise.resolve([]),
       buscarInternacionais ? themuseService(query.en_query) : Promise.resolve([]),
       buscarInternacionais ? arbeitnowService(query.en_query) : Promise.resolve([]),
-      adzunaService(query.pt_query, filters.cidade),
+      adzunaService(query.pt_query, query.cidade_en),
     ]);
 
   const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Adzuna"];
@@ -348,13 +355,17 @@ async function buscarVagasComPipeline(filters) {
   vagasBrutas = deduplicarPorConteudo(normalizeVagas(deduplicarPorLink(todasBrutas)));
   console.log(`[pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
 
-  // ETAPA 2 — Filtragem
+  // ETAPA 2b — Filtro geográfico (remove vagas estrangeiras em buscas locais)
+  vagasBrutas = filtrarPorPais(vagasBrutas, filters.cidade, query.is_remote);
+  console.log(`[pipeline] Apos filtro geo: ${vagasBrutas.length} vagas`);
+
+  // ETAPA 4 — Filtragem
   const filtered = filtrarVagas(vagasBrutas, filters);
   vagasFiltradas = filtered.vagas;
   removidasFiltro = filtered.removidas;
   console.log(`[pipeline] Apos filtros: ${vagasFiltradas.length} vagas (removidas: ${removidasFiltro})`);
 
-  // ETAPA 3 — Validacao de links (com o tempo restante)
+  // ETAPA 5 — Validacao de links (com o tempo restante)
   if (remainingMs(deadline) > 0) {
     const validationStartedAt = Date.now();
     try {

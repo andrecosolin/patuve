@@ -20,12 +20,14 @@ const TIMEOUT_MS = 10_000;
 /**
  * @param {string} cargo
  * @param {string} cidade
- * @returns {Promise<{pt_query: string, en_query: string, is_remote: boolean, adzuna_country: string, tags: string[]}>}
+ * @returns {Promise<{pt_query, en_query, cidade_pt, cidade_en, is_remote, adzuna_country, tags}>}
  */
 module.exports = async function buildQuery(cargo, cidade) {
   const fallback = {
     pt_query: cargo,
     en_query: cargo,
+    cidade_pt: cidade,
+    cidade_en: cidade ? `${cidade}, BR` : "",
     is_remote: /remoto|remote/i.test(cidade),
     adzuna_country: "br",
     tags: [cargo],
@@ -58,11 +60,15 @@ Sua missão é gerar um objeto JSON otimizado para múltiplas APIs de vagas.
 4. Filtro de Localidade:
    - Se cidade for "Remoto", "Remote" ou vazia, is_remote: true
    - Caso contrário, is_remote: false
+   - cidade_pt: cidade original como informada
+   - cidade_en: cidade normalizada sem acentos para APIs (ex: "São Paulo" -> "Sao Paulo")
 
 Retorne APENAS este JSON sem texto adicional:
 {
   "pt_query": "termo em português",
   "en_query": "termo em inglês",
+  "cidade_pt": "cidade original",
+  "cidade_en": "cidade sem acentos",
   "is_remote": false,
   "adzuna_country": "br",
   "tags": ["keyword1", "keyword2", "keyword3"]
@@ -70,7 +76,7 @@ Retorne APENAS este JSON sem texto adicional:
         },
       ],
       temperature: 0.1,
-      max_tokens: 200,
+      max_tokens: 250,
     }, { signal: controller.signal });
 
     const texto = completion.choices[0]?.message?.content ?? "{}";
@@ -84,6 +90,8 @@ Retorne APENAS este JSON sem texto adicional:
     return {
       pt_query: String(parsed.pt_query || cargo),
       en_query: String(parsed.en_query || cargo),
+      cidade_pt: String(parsed.cidade_pt || cidade),
+      cidade_en: String(parsed.cidade_en || cidade),
       is_remote: Boolean(parsed.is_remote),
       adzuna_country: String(parsed.adzuna_country || "br"),
       tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : [cargo],
