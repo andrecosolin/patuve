@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, ToastAndroid, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -6,7 +7,7 @@ import { JobCard } from "@/components/JobCard";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { SearchForm } from "@/components/SearchForm";
 import { colors } from "@/constants/theme";
-import { buscarVagas, carregarUltimaBusca } from "@/services/vagasService";
+import { buscarVagas, carregarBuscaSalva, removerBuscaSalva, salvarBusca } from "@/services/vagasService";
 import { AppError, SearchFilters, SearchMeta, Vaga } from "@/types/vaga";
 
 const PAGE_SIZE = 5;
@@ -22,6 +23,12 @@ const initialFilters: SearchFilters = {
   tipoContrato: "Ambos",
   nivel: "Todos",
   modalidade: "Todas",
+};
+
+type BuscaSalva = {
+  filters: SearchFilters;
+  vagas: Vaga[];
+  meta: SearchMeta;
 };
 
 function formatMetaLabel(meta: SearchMeta): string {
@@ -71,6 +78,14 @@ function getErrorCopy(error: AppError | null) {
   };
 }
 
+function showToast(message: string, setToast: (msg: string | null) => void) {
+  if (Platform.OS === "android") {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  } else {
+    setToast(message);
+  }
+}
+
 export default function SearchScreen() {
   const [filters, setFilters] = useState<SearchFilters>(initialFilters);
   const [allJobs, setAllJobs] = useState<Vaga[]>([]);
@@ -81,31 +96,21 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [cacheHit, setCacheHit] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
-  const [restoredToast, setRestoredToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [buscaSalva, setBuscaSalva] = useState<BuscaSalva | null>(null);
 
+  // Ao iniciar: app começa limpo, apenas verifica se existe busca salva
   useEffect(() => {
-    carregarUltimaBusca().then((data) => {
-      if (!data) return;
-
-      setFilters(data.filters);
-      setAllJobs(data.vagas);
-      setMeta(data.meta);
-      setHasSearched(true);
-
-      const message = `Ultima busca: ${data.filters.cargo} em ${data.filters.cidade}`;
-      if (Platform.OS === "android") {
-        ToastAndroid.show(message, ToastAndroid.SHORT);
-      } else {
-        setRestoredToast(message);
-      }
+    carregarBuscaSalva().then((data) => {
+      if (data) setBuscaSalva(data);
     });
   }, []);
 
   useEffect(() => {
-    if (!restoredToast) return undefined;
-    const timer = setTimeout(() => setRestoredToast(null), 2400);
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 2400);
     return () => clearTimeout(timer);
-  }, [restoredToast]);
+  }, [toast]);
 
   useEffect(() => {
     if (!loading) {
@@ -123,6 +128,7 @@ export default function SearchScreen() {
   const visibleJobs = allJobs.slice(0, visibleCount);
   const hasMore = visibleCount < allJobs.length;
   const errorCopy = useMemo(() => getErrorCopy(error), [error]);
+  const podeSalvar = hasSearched && !loading && allJobs.length > 0 && !error;
 
   const handleSearch = async () => {
     if (!filters.cargo.trim() || !filters.cidade.trim()) {
@@ -136,6 +142,7 @@ export default function SearchScreen() {
       setError(null);
       setCacheHit(false);
       setVisibleCount(PAGE_SIZE);
+      setBuscaSalva(null); // esconde o card ao iniciar nova busca
 
       const result = await buscarVagas(filters);
       setAllJobs(result.vagas);
@@ -152,14 +159,56 @@ export default function SearchScreen() {
     }
   };
 
+  const handleSalvarBusca = async () => {
+    if (!meta) return;
+    await salvarBusca(filters, allJobs, meta);
+    showToast("Busca salva!", setToast);
+  };
+
+  const handleContinuarBusca = () => {
+    if (!buscaSalva) return;
+    setFilters(buscaSalva.filters);
+    setAllJobs(buscaSalva.vagas);
+    setMeta(buscaSalva.meta);
+    setHasSearched(true);
+    setCacheHit(false);
+    setBuscaSalva(null);
+  };
+
+  const handleDescartarBuscaSalva = async () => {
+    await removerBuscaSalva();
+    setBuscaSalva(null);
+  };
+
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SearchForm filters={filters} loading={loading} onChange={setFilters} onSubmit={handleSearch} />
 
-        {restoredToast ? (
+        {/* Card de busca salva */}
+        {buscaSalva && !hasSearched ? (
+          <View style={styles.buscaSalvaCard}>
+            <View style={styles.buscaSalvaInfo}>
+              <Ionicons name="bookmark" size={16} color={colors.accent} style={{ marginRight: 8 }} />
+              <Text style={styles.buscaSalvaLabel} numberOfLines={1}>
+                {buscaSalva.filters.cargo} em {buscaSalva.filters.cidade}
+              </Text>
+            </View>
+            <View style={styles.buscaSalvaActions}>
+              <Pressable onPress={handleContinuarBusca} style={styles.buscaSalvaBtnPrimary}>
+                <Text style={styles.buscaSalvaBtnPrimaryText}>Continuar</Text>
+              </Pressable>
+              <Pressable onPress={handleDescartarBuscaSalva} style={styles.buscaSalvaBtnSecondary}>
+                <Text style={styles.buscaSalvaBtnSecondaryText}>Descartar</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Toast */}
+        {toast ? (
           <View style={styles.toast}>
-            <Text style={styles.toastText}>{restoredToast}</Text>
+            <Text style={styles.toastText}>{toast}</Text>
           </View>
         ) : null}
 
@@ -175,7 +224,15 @@ export default function SearchScreen() {
 
         {!errorCopy && hasSearched ? (
           <View style={styles.resultsHeader}>
-            <Text style={styles.resultsTitle}>Vagas encontradas</Text>
+            <View style={styles.resultsHeaderRow}>
+              <Text style={styles.resultsTitle}>Vagas encontradas</Text>
+              {podeSalvar ? (
+                <Pressable onPress={handleSalvarBusca} style={styles.salvarBtn} hitSlop={8}>
+                  <Ionicons name="bookmark-outline" size={20} color={colors.accent} />
+                  <Text style={styles.salvarBtnText}>Salvar busca</Text>
+                </Pressable>
+              ) : null}
+            </View>
             <Text style={styles.resultsMeta}>
               {loading ? LOADING_MESSAGES[loadingMessageIndex] : meta ? formatMetaLabel(meta) : `${allJobs.length} resultado(s)`}
             </Text>
@@ -222,13 +279,76 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 120,
   },
+  buscaSalvaCard: {
+    backgroundColor: colors.backgroundElevated,
+    borderColor: colors.accent,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 14,
+  },
+  buscaSalvaInfo: {
+    alignItems: "center",
+    flexDirection: "row",
+    marginBottom: 12,
+  },
+  buscaSalvaLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  buscaSalvaActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  buscaSalvaBtnPrimary: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  buscaSalvaBtnPrimaryText: {
+    color: "#000",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  buscaSalvaBtnSecondary: {
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  buscaSalvaBtnSecondaryText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   resultsHeader: {
     marginBottom: 16,
+  },
+  resultsHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   resultsTitle: {
     color: colors.text,
     fontSize: 21,
     fontWeight: "800",
+  },
+  salvarBtn: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 4,
+  },
+  salvarBtnText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: "600",
   },
   resultsMeta: {
     color: colors.muted,
@@ -319,4 +439,3 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 });
-
