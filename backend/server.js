@@ -135,7 +135,7 @@ function remainingMs(deadline) {
 
 const FONTES_CONHECIDAS = [
   "LinkedIn", "Gupy", "Indeed", "Catho", "InfoJobs", "Vagas.com", "trampos.co",
-  "Jooble", "Himalayas", "RemoteOK", "Jobicy", "The Muse", "Arbeitnow",
+  "Jooble", "Himalayas", "RemoteOK", "Jobicy", "The Muse", "Arbeitnow", "Adzuna",
   "GeekHunter", "99jobs", "Programathor", "Remotar",
 ];
 
