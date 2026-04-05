@@ -55,7 +55,8 @@ const CIDADES_AMBIGUAS = new Set([
 ]);
 
 // Estados brasileiros por extenso — confirma que a localização é BR
-const ESTADOS_BR = /\b(acre|alagoas|amapá|amapa|amazonas|bahia|ceará|ceara|espirito santo|goiás|goias|maranhão|maranhao|mato grosso|minas gerais|pará|para|paraíba|paraiba|paraná|parana|pernambuco|piauí|piaui|rio de janeiro|rio grande|rondônia|rondonia|roraima|santa catarina|são paulo|sao paulo|sergipe|tocantins)\b/i;
+// Sem \b final em palavras acentuadas (á, ã, etc. não são \w no JS)
+const ESTADOS_BR = /(acre|alagoas|amapá|amapa|amazonas|bahia|ceará|ceara|espirito santo|goiás|goias|maranhão|maranhao|mato grosso|minas gerais|pará|para\b|paraíba|paraiba|paraná|parana\b|pernambuco|piauí|piaui|rio de janeiro|rio grande|rondônia|rondonia|roraima|santa catarina|são paulo|sao paulo|sergipe|tocantins)/i;
 
 /**
  * Retorna true se a localização é ambígua (cidade homônima BR/EUA) e sem estado explícito.
