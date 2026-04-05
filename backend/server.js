@@ -423,16 +423,12 @@ app.post("/buscar-vagas", limiter, async (req, res) => {
 
     const { vagas, meta } = await buscarVagasComPipeline(normalized);
 
-    if (meta.total_validas === 0) {
-      return res.status(504).json({
-        erro: "busca_timeout",
-        mensagem: "A busca demorou demais. Tente novamente.",
-      });
-    }
-
     const payload = { vagas, meta };
 
-    setCacheEntry(cacheKey, payload);
+    // Só cacheia se encontrou vagas (resultado vazio não vale guardar)
+    if (meta.total_validas > 0) {
+      setCacheEntry(cacheKey, payload);
+    }
 
     return res.json({ ...payload, cache: false });
   } catch (error) {
