@@ -45,9 +45,40 @@ function temSiglaAmericana(localizacao) {
 // Localizações genéricas aceitas sempre — não indicam país estrangeiro
 const LOCALIZACOES_NEUTRAS = /^(remoto|remote|brasil|brazil|home\s*office|anywhere|worldwide|global)$/i;
 
+// Cidades que existem tanto no Brasil quanto nos EUA (sem estado explícito são ambíguas)
+const CIDADES_AMBIGUAS = new Set([
+  "colorado", "washington", "california", "califórnia",
+  "florida", "flórida", "indiana", "columbia", "nevada",
+  "virginia", "georgia", "carolina",
+  // Toledo/PR existe mas "Toledo" sem estado também é Toledo/OH
+  "toledo",
+]);
+
+// Estados brasileiros por extenso — confirma que a localização é BR
+const ESTADOS_BR = /\b(acre|alagoas|amapá|amapa|amazonas|bahia|ceará|ceara|espirito santo|goiás|goias|maranhão|maranhao|mato grosso|minas gerais|pará|para|paraíba|paraiba|paraná|parana|pernambuco|piauí|piaui|rio de janeiro|rio grande|rondônia|rondonia|roraima|santa catarina|são paulo|sao paulo|sergipe|tocantins)\b/i;
+
+/**
+ * Retorna true se a localização é ambígua (cidade homônima BR/EUA) e sem estado explícito.
+ * "Colorado" → true (ambígua)
+ * "Colorado, Paraná" → false (estado BR presente)
+ * "Toledo, OH" → já descartada antes por sigla americana
+ */
+function ehCidadeAmbiguaSemEstado(localizacao) {
+  const loc = String(localizacao);
+  const cidade = loc.split(",")[0].trim().toLowerCase();
+
+  if (!CIDADES_AMBIGUAS.has(cidade)) return false;
+
+  // Tem estado/cidade brasileira no restante → não é ambígua
+  const resto = loc.includes(",") ? loc.slice(loc.indexOf(",") + 1) : "";
+  if (ESTADOS_BR.test(resto)) return false;
+
+  // Só tem o nome da cidade, sem estado → ambígua
+  return true;
+}
+
 function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
   // Filtro sempre ativo — app serve apenas mercado brasileiro
-  // Para buscas remotas: aceita "Remote"/"Remoto"/"Brasil" mas descarta cidades estrangeiras explícitas
 
   let removidas = 0;
   const resultado = vagas.filter((vaga) => {
@@ -70,6 +101,13 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
 
     // Descarta imediatamente se termina em sigla americana/canadense
     if (temSiglaAmericana(loc)) {
+      removidas++;
+      return false;
+    }
+
+    // Cidade ambígua sem estado explícito → rejeita (ex: "Colorado" sem "Paraná")
+    if (ehCidadeAmbiguaSemEstado(loc)) {
+      console.log(`[filtroGeo] Removida por cidade ambígua sem estado: ${loc} | ${vaga.titulo}`);
       removidas++;
       return false;
     }

@@ -48,6 +48,87 @@ const INDICADORES_PRESENCIAL = [
   "modalidade: híbrido", "modalidade hibrido",
 ];
 
+// Frases típicas de job description americano
+const FRASES_INGLES = [
+  "we are looking for", "join our team", "you will be responsible",
+  "we offer", "benefits include", "apply now", "job description",
+  "about the role", "about us", "what you will do",
+  "requirements:", "qualifications:", "nice to have",
+  "equal opportunity", "we are hiring", "we're looking",
+  "salary range", "health insurance",
+];
+
+// Acentos e palavras que provam português
+const MARCAS_PORTUGUES_FORTE = /[ãâáéêíóôúç]|\b(você|será|buscamos|procuramos|empresa|vaga|salário|benefícios|requisitos|experiência|conhecimento|habilidades|formação|desejável|diferencial|remuneração|oportunidade|candidat|desenvolvedor|analista|gerente|coordenador|engenheiro|remoto|hibrido|presencial|pleno|cargo)\b/i;
+
+/**
+ * Remove vagas em inglês (frases típicas de JD americano sem marcas de PT).
+ */
+function filtrarIdioma(vagas) {
+  const aprovadas = [];
+  let removidas = 0;
+
+  for (const vaga of vagas) {
+    const texto = `${vaga.titulo || ""} ${vaga.descricao_curta || ""}`.toLowerCase();
+
+    if (MARCAS_PORTUGUES_FORTE.test(texto)) {
+      aprovadas.push(vaga);
+      continue;
+    }
+
+    const pontosIngles = FRASES_INGLES.filter((f) => texto.includes(f)).length;
+    if (pontosIngles >= 2) {
+      console.log(`[filtro] Removida por idioma (inglês): ${vaga.titulo}`);
+      removidas++;
+      continue;
+    }
+
+    aprovadas.push(vaga);
+  }
+
+  if (removidas > 0) {
+    console.log(`[filtro] ${removidas} vaga(s) em inglês removida(s).`);
+  }
+
+  return { vagas: aprovadas, removidas };
+}
+
+/**
+ * Remove vagas publicadas há mais de diasMaximos dias.
+ */
+function filtrarDataPublicacao(vagas, diasMaximos = 45) {
+  const limite = new Date(Date.now() - diasMaximos * 24 * 60 * 60 * 1000);
+  const aprovadas = [];
+  let removidas = 0;
+
+  for (const vaga of vagas) {
+    if (!vaga.data_publicacao) {
+      aprovadas.push(vaga);
+      continue;
+    }
+
+    const data = new Date(vaga.data_publicacao);
+    if (isNaN(data.getTime())) {
+      aprovadas.push(vaga);
+      continue;
+    }
+
+    if (data < limite) {
+      console.log(`[filtro] Removida por data antiga (${vaga.data_publicacao}): ${vaga.titulo}`);
+      removidas++;
+      continue;
+    }
+
+    aprovadas.push(vaga);
+  }
+
+  if (removidas > 0) {
+    console.log(`[filtro] ${removidas} vaga(s) antiga(s) removida(s).`);
+  }
+
+  return { vagas: aprovadas, removidas };
+}
+
 /**
  * Filtra por modalidade usando texto (título + descrição + localização).
  * Necessário porque a maioria das APIs não retorna o campo modalidade.
@@ -156,4 +237,4 @@ function filtrarVagas(vagas, filtros = {}) {
   return { vagas: aprovadas, removidas };
 }
 
-module.exports = { isLinkValido, filtrarVagas };
+module.exports = { isLinkValido, filtrarVagas, filtrarIdioma, filtrarDataPublicacao };

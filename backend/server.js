@@ -5,7 +5,7 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
-const { filtrarVagas } = require("./utils/filtrosVagas");
+const { filtrarVagas, filtrarIdioma, filtrarDataPublicacao } = require("./utils/filtrosVagas");
 const { validarVagas, ordenarPorFonte } = require("./services/validadorVagas");
 const buildQuery = require("./utils/queryBuilder");
 const { carregarCidades } = require("./utils/cidadesBR");
@@ -343,9 +343,19 @@ async function buscarVagasComPipeline(filters) {
   vagasBrutas = deduplicarPorConteudo(normalizeVagas(deduplicarPorLink(todasBrutas)));
   console.log(`[pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
 
-  // ETAPA 2b — Filtro geográfico (remove vagas estrangeiras em buscas locais)
+  // ETAPA 2b — Filtro geográfico (remove vagas estrangeiras + cidades ambíguas)
   vagasBrutas = filtrarPorPais(vagasBrutas, filters.cidade, query.is_remote);
   console.log(`[pipeline] Apos filtro geo: ${vagasBrutas.length} vagas`);
+
+  // ETAPA 2c — Filtro de idioma (remove vagas em inglês sem marcas de PT)
+  const { vagas: vagasIdioma, removidas: removidasIdioma } = filtrarIdioma(vagasBrutas);
+  vagasBrutas = vagasIdioma;
+  console.log(`[pipeline] Apos filtro idioma: ${vagasBrutas.length} vagas (removidas: ${removidasIdioma})`);
+
+  // ETAPA 2d — Filtro de data (remove vagas com mais de 45 dias)
+  const { vagas: vagasData, removidas: removidasData } = filtrarDataPublicacao(vagasBrutas, 45);
+  vagasBrutas = vagasData;
+  console.log(`[pipeline] Apos filtro data: ${vagasBrutas.length} vagas (removidas: ${removidasData})`);
 
   // ETAPA 4 — Filtragem
   const filtered = filtrarVagas(vagasBrutas, filters);
