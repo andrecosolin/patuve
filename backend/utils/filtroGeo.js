@@ -4,6 +4,20 @@
 
 const { isCidadeBrasileira } = require("./cidadesBR");
 
+// Artigos/preposições/palavras comuns que só existem em inglês
+const PALAVRAS_INGLES = /\b(the|and|for|with|our|your|you|we|are|have|will|this|that|from|its|been|can|may|must|shall|should|would|could|an\s|at\s|by\s|is\s|of\s|on\s|or\s|to\s)\b/i;
+// Acentos e palavras que provam que é português
+const MARCAS_PORTUGUES = /[ãâáéêíóôúç]|\b(de|em|para|com|na|no|do|da|das|dos|vaga|empresa|cargo|remoto|híbrido|hibrido|presencial|requisitos|experiência|experiencia|nivel|júnior|junior|pleno|sênior|senior)\b/i;
+
+/**
+ * Retorna true se o texto parece ser em inglês (sem marcas de português).
+ */
+function pareceIngles(titulo, descricao) {
+  const texto = `${titulo ?? ""} ${descricao ?? ""}`;
+  if (MARCAS_PORTUGUES.test(texto)) return false;
+  return PALAVRAS_INGLES.test(texto);
+}
+
 // Siglas de estados americanos (e canadenses) que não existem como siglas brasileiras
 const SIGLAS_ESTADOS_EUA = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -32,6 +46,13 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
     if (!vaga.localizacao) {
       vaga.localizacao = cidadeUsuario;
       return true;
+    }
+
+    // Descarta vagas em inglês sem nenhuma marca de português
+    if (pareceIngles(vaga.titulo, vaga.descricao_curta)) {
+      console.log(`[filtroGeo] Removida por idioma (inglês): ${vaga.titulo}`);
+      removidas++;
+      return false;
     }
 
     const loc = String(vaga.localizacao).trim();
@@ -70,4 +91,4 @@ function filtrarPorPais(vagas, cidadeUsuario, isRemoto) {
   return resultado;
 }
 
-module.exports = { filtrarPorPais };
+module.exports = { filtrarPorPais, pareceIngles };
