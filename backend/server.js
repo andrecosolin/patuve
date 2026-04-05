@@ -312,34 +312,17 @@ async function buscarVagasComPipeline(filters) {
     tags: [filters.cargo],
   };
 
-  // Força is_remote se usuário selecionou modalidade Remoto ou digitou "Brasil"/"Remoto" na cidade
-  const cidadePareceRemoto = /^(brasil|brazil|remoto|remote)$/i.test(filters.cidade.trim());
-  const modalidadeRemoto = filters.modalidade === "Remoto";
-  if (cidadePareceRemoto || modalidadeRemoto) {
-    query.is_remote = true;
-  }
+  console.log(`[pipeline] Query builder: pt="${query.pt_query}" cidade_pt="${query.cidade_pt}" modalidade="${filters.modalidade}"`);
 
-  console.log(`[pipeline] Query builder: ${JSON.stringify(query)}`);
+  // ETAPA 2 — Busca paralela — plano gratuito: SEMPRE apenas Jooble + Adzuna (mercado BR)
+  // APIs internacionais (Himalayas, RemoteOK, Jobicy, TheMuse, Arbeitnow) reservadas para Premium
+  console.log(`[pipeline] Frente: 🇧🇷 BRASIL (Jooble + Adzuna)`);
 
-  // ETAPA 2 — Busca paralela com queries otimizadas
-  // Versão free: apenas Jooble (keywords + Brasil) e Adzuna (country=br) — sempre mercado brasileiro
-  // APIs internacionais (Himalayas, RemoteOK, etc.) reservadas para o plano Premium
-  const tag = query.tags[0] ?? query.en_query;
+  const [joobleSettled, adzunaSettled] = await Promise.allSettled([
+    joobleService(query.pt_query, query.cidade_pt, filters.modalidade),
+    adzunaService(query.pt_query, query.cidade_en, filters.modalidade),
+  ]);
 
-  console.log(`[pipeline] Modo free: Jooble + Adzuna (Brasil apenas)`);
-
-  const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
-    await Promise.allSettled([
-      joobleService(query.pt_query, query.cidade_pt, filters.modalidade),
-      Promise.resolve([]),
-      Promise.resolve([]),
-      Promise.resolve([]),
-      Promise.resolve([]),
-      Promise.resolve([]),
-      adzunaService(query.pt_query, query.cidade_en, filters.modalidade),
-    ]);
-
-  const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Adzuna"];
   let fontesFalharam = 0;
   const todasBrutas = [];
 
@@ -348,16 +331,14 @@ async function buscarVagasComPipeline(filters) {
   if (joobleF) fontesFalharam++;
   todasBrutas.push(...vagasJooble);
 
-  // Adzuna (único serviço internacional configurado para BR)
-  for (const [i, settled] of [himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled].entries()) {
-    const { vagas, falhou } = extrairResultado(settled, nomesApis[i]);
-    if (nomesApis[i] === "Adzuna" && falhou) fontesFalharam++;
-    todasBrutas.push(...vagas);
-  }
+  // Adzuna
+  const { vagas: vagasAdzuna, falhou: adzunaF } = extrairResultado(adzunaSettled, "Adzuna");
+  if (adzunaF) fontesFalharam++;
+  todasBrutas.push(...vagasAdzuna);
 
   const parcial = fontesFalharam > 0;
   console.log(`[pipeline] Resultado parcial: ${parcial ? `sim (${fontesFalharam} fonte(s) falharam)` : "nao"}`);
-  console.log(`[pipeline] Total bruto: ${todasBrutas.length} vagas`);
+  console.log(`[pipeline] Jooble: ${vagasJooble.length} vagas | Adzuna: ${vagasAdzuna.length} vagas | Total bruto: ${todasBrutas.length}`);
 
   vagasBrutas = deduplicarPorConteudo(normalizeVagas(deduplicarPorLink(todasBrutas)));
   console.log(`[pipeline] Apos dedup: ${vagasBrutas.length} vagas`);
@@ -407,7 +388,7 @@ async function buscarVagasComPipeline(filters) {
   };
 
   console.log(
-    `[pipeline] Final: ${vagasFinais.length} vagas em ${meta.tempo_busca_ms}ms | cargo="${filters.cargo}" cidade="${filters.cidade}" parcial=${parcial}`
+    `[pipeline] Final: ${vagasFinais.length} vagas em ${meta.tempo_busca_ms}ms | cargo="${filters.cargo}" cidade="${filters.cidade}" modalidade="${filters.modalidade}" parcial=${parcial}`
   );
 
   return { vagas: vagasFinais, meta };
