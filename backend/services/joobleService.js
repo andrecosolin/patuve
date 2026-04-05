@@ -23,15 +23,16 @@ function mapModalidade(type) {
   return null;
 }
 
-module.exports = async function joobleService(cargo, cidade) {
+module.exports = async function joobleService(cargo, cidade, modalidade) {
   const apiKey = process.env.JOOBLE_API_KEY;
   if (!apiKey) return [];
 
-  const isRemoto = /remoto|remote/i.test(cidade ?? "");
+  const isRemoto = modalidade === "Remoto" || /remoto|remote/i.test(cidade ?? "");
 
-  // Para buscas locais: força ", Brasil" no final para reduzir resultados americanos
+  // Remoto: inclui termos de remoto nas keywords para que o Jooble priorize vagas remotas
+  // Local: força ", Brasil" para reduzir resultados americanos
   const keywords = isRemoto
-    ? cargo
+    ? `${cargo} remoto home office`
     : `${cargo} ${cidade}, Brasil`.trim();
 
   const controller = new AbortController();

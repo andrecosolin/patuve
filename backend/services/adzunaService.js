@@ -7,7 +7,7 @@ const stripHtml = require("../utils/stripHtml");
 
 const TIMEOUT_MS = 8_000;
 
-module.exports = async function adzunaService(cargo, cidade) {
+module.exports = async function adzunaService(cargo, cidade, modalidade) {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
 
@@ -20,12 +20,13 @@ module.exports = async function adzunaService(cargo, cidade) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    const isRemoto = modalidade === "Remoto";
     const params = new URLSearchParams({
       app_id: appId,
       app_key: appKey,
       results_per_page: "20",
-      what: cargo,
-      where: cidade,
+      what: isRemoto ? `${cargo} remoto` : cargo,
+      where: isRemoto ? "remote" : cidade,
     });
 
     const res = await fetch(

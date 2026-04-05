@@ -36,6 +36,65 @@ function isLinkValido(url, fonte) {
   return padrao ? padrao.test(url) : true;
 }
 
+const INDICADORES_REMOTO = [
+  "remoto", "remote", "home office", "homeoffice",
+  "trabalho remoto", "anywhere", "worldwide",
+  "trabalhe de casa", "de qualquer lugar",
+];
+
+const INDICADORES_PRESENCIAL = [
+  "presencial", "on-site", "onsite", "in-office", "in office",
+  "modalidade: presencial", "modalidade presencial",
+  "modalidade: híbrido", "modalidade hibrido",
+];
+
+/**
+ * Filtra por modalidade usando texto (título + descrição + localização).
+ * Necessário porque a maioria das APIs não retorna o campo modalidade.
+ */
+function filtrarPorModalidadeTexto(vagas, modalidade) {
+  if (!modalidade || modalidade === "Todas") return { vagas, removidas: 0 };
+
+  const aprovadas = [];
+  let removidas = 0;
+
+  for (const vaga of vagas) {
+    const texto = [vaga.titulo, vaga.descricao_curta, vaga.localizacao]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (modalidade === "Remoto") {
+      const temPresencial = INDICADORES_PRESENCIAL.some((i) => texto.includes(i));
+      if (temPresencial) {
+        console.log(`[filtro] Removida por presencial: ${vaga.titulo}`);
+        removidas++;
+        continue;
+      }
+
+      const temRemoto = INDICADORES_REMOTO.some((i) => texto.includes(i));
+      if (!temRemoto) {
+        console.log(`[filtro] Removida sem indicador remoto: ${vaga.titulo}`);
+        removidas++;
+        continue;
+      }
+    }
+
+    if (modalidade === "Presencial") {
+      const temRemoto = INDICADORES_REMOTO.some((i) => texto.includes(i));
+      if (temRemoto) {
+        console.log(`[filtro] Removida remoto em busca presencial: ${vaga.titulo}`);
+        removidas++;
+        continue;
+      }
+    }
+
+    aprovadas.push(vaga);
+  }
+
+  return { vagas: aprovadas, removidas };
+}
+
 /**
  * Aplica todos os filtros estáticos e retorna vagas aprovadas + contagem de removidas.
  */
@@ -78,12 +137,6 @@ function filtrarVagas(vagas, filtros = {}) {
       continue;
     }
 
-    // Filtro de modalidade (só aplica se vaga tem a info)
-    if (modalidadeDesejada && vaga.modalidade && vaga.modalidade !== modalidadeDesejada) {
-      removidas++;
-      continue;
-    }
-
     // Filtro de tipo contrato (só aplica se vaga tem a info)
     if (contratoDesejado && vaga.tipo_contrato && vaga.tipo_contrato !== contratoDesejado) {
       removidas++;
@@ -92,6 +145,12 @@ function filtrarVagas(vagas, filtros = {}) {
 
     seen.add(vaga.link_direto);
     aprovadas.push(vaga);
+  }
+
+  // Filtro de modalidade por texto (cobre vagas sem campo modalidade preenchido)
+  if (modalidadeDesejada) {
+    const { vagas: vagasMod, removidas: removidasMod } = filtrarPorModalidadeTexto(aprovadas, modalidadeDesejada);
+    return { vagas: vagasMod, removidas: removidas + removidasMod };
   }
 
   return { vagas: aprovadas, removidas };

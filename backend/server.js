@@ -330,13 +330,13 @@ async function buscarVagasComPipeline(filters) {
 
   const [joobleSettled, himalayasSettled, remoteokSettled, jobicySettled, themuseSettled, arbeitnowSettled, adzunaSettled] =
     await Promise.allSettled([
-      joobleService(query.pt_query, query.cidade_pt),
+      joobleService(query.pt_query, query.cidade_pt, filters.modalidade),
       Promise.resolve([]),
       Promise.resolve([]),
       Promise.resolve([]),
       Promise.resolve([]),
       Promise.resolve([]),
-      adzunaService(query.pt_query, query.cidade_en),
+      adzunaService(query.pt_query, query.cidade_en, filters.modalidade),
     ]);
 
   const nomesApis = ["Himalayas", "RemoteOK", "Jobicy", "TheMuse", "Arbeitnow", "Adzuna"];
