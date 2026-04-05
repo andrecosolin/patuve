@@ -61,6 +61,9 @@ const FRASES_INGLES = [
 // Acentos e palavras que provam português
 const MARCAS_PORTUGUES_FORTE = /[ãâáéêíóôúç]|\b(você|será|buscamos|procuramos|empresa|vaga|salário|benefícios|requisitos|experiência|conhecimento|habilidades|formação|desejável|diferencial|remuneração|oportunidade|candidat|desenvolvedor|analista|gerente|coordenador|engenheiro|remoto|hibrido|presencial|pleno|cargo)\b/i;
 
+// Título começa com "Remote " (inglês) — complementa o filtroGeo como segunda camada
+const TITULO_INGLES_REMOTE_FILTRO = /^remote\s+[a-z]/i;
+
 /**
  * Remove vagas em inglês (frases típicas de JD americano sem marcas de PT).
  */
@@ -77,7 +80,9 @@ function filtrarIdioma(vagas) {
     }
 
     const pontosIngles = FRASES_INGLES.filter((f) => texto.includes(f)).length;
-    if (pontosIngles >= 2) {
+    const tituloIngles = TITULO_INGLES_REMOTE_FILTRO.test(vaga.titulo || "");
+
+    if (pontosIngles >= 2 || tituloIngles) {
       console.log(`[filtro] Removida por idioma (inglês): ${vaga.titulo}`);
       removidas++;
       continue;
