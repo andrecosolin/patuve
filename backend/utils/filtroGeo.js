@@ -4,18 +4,26 @@
 
 const { isCidadeBrasileira } = require("./cidadesBR");
 
-// Artigos/preposições/palavras comuns que só existem em inglês
-const PALAVRAS_INGLES = /\b(the|and|for|with|our|your|you|we|are|have|will|this|that|from|its|been|can|may|must|shall|should|would|could|an\s|at\s|by\s|is\s|of\s|on\s|or\s|to\s)\b/i;
-// Acentos e palavras que provam que é português
-const MARCAS_PORTUGUES = /[ãâáéêíóôúç]|\b(de|em|para|com|na|no|do|da|das|dos|vaga|empresa|cargo|remoto|híbrido|hibrido|presencial|requisitos|experiência|experiencia|nivel|júnior|junior|pleno|sênior|senior)\b/i;
+// Acentos e palavras que provam que é português (sem "senior"/"junior" que também são inglês)
+const MARCAS_PORTUGUES = /[ãâáéêíóôúç]|\b(de|em|para|com|na|no|do|da|das|dos|vaga|empresa|cargo|remoto|híbrido|hibrido|presencial|requisitos|experiência|experiencia|nivel|pleno|oportunidade|desenvolvedor|analista|gerente|coordenador|engenheiro|estágio|estagio)\b/i;
+
+// Título começa com "Remote " (inglês) — em PT seria "Remoto"
+const TITULO_INGLES_REMOTE = /^remote\s+[a-z]/i;
+
+// Artigos/preposições/verbos que só aparecem em inglês
+const TEXTO_INGLES = /\b(the |and |for |with |our |you |we are |is a |is an |will be |looking for |years of |we offer |must have )\b/i;
+
+// Termos de cargo tipicamente ingleses
+const CARGO_INGLES = /\b(payroll|staffing|workforce|account executive|account manager|customer success|employee relations|client services|onboarding specialist|sales development|compliance officer)\b/i;
 
 /**
  * Retorna true se o texto parece ser em inglês (sem marcas de português).
  */
 function pareceIngles(titulo, descricao) {
-  const texto = `${titulo ?? ""} ${descricao ?? ""}`;
+  const tituloStr = String(titulo ?? "");
+  const texto = `${tituloStr} ${descricao ?? ""}`;
   if (MARCAS_PORTUGUES.test(texto)) return false;
-  return PALAVRAS_INGLES.test(texto);
+  return TITULO_INGLES_REMOTE.test(tituloStr) || TEXTO_INGLES.test(texto) || CARGO_INGLES.test(texto);
 }
 
 // Siglas de estados americanos (e canadenses) que não existem como siglas brasileiras
