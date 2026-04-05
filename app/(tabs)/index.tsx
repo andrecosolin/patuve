@@ -7,7 +7,7 @@ import { JobCard } from "@/components/JobCard";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { SearchForm } from "@/components/SearchForm";
 import { colors } from "@/constants/theme";
-import { buscarVagas, carregarBuscaSalva, removerBuscaSalva, salvarBusca } from "@/services/vagasService";
+import { BuscaSalva, buscarVagas, carregarBuscasSalvas, removerBuscaSalva, salvarBusca } from "@/services/vagasService";
 import { AppError, SearchFilters, SearchMeta, Vaga } from "@/types/vaga";
 
 const PAGE_SIZE = 5;
@@ -23,12 +23,6 @@ const initialFilters: SearchFilters = {
   tipoContrato: "Ambos",
   nivel: "Todos",
   modalidade: "Todas",
-};
-
-type BuscaSalva = {
-  filters: SearchFilters;
-  vagas: Vaga[];
-  meta: SearchMeta;
 };
 
 function formatMetaLabel(meta: SearchMeta): string {
@@ -97,12 +91,12 @@ export default function SearchScreen() {
   const [cacheHit, setCacheHit] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [buscaSalva, setBuscaSalva] = useState<BuscaSalva | null>(null);
+  const [buscasSalvas, setBuscasSalvas] = useState<BuscaSalva[]>([]);
 
-  // Ao iniciar: app começa limpo, apenas verifica se existe busca salva
+  // Ao iniciar: app começa limpo, apenas verifica se existem buscas salvas
   useEffect(() => {
-    carregarBuscaSalva().then((data) => {
-      if (data) setBuscaSalva(data);
+    carregarBuscasSalvas().then((data) => {
+      if (data.length > 0) setBuscasSalvas(data);
     });
   }, []);
 
@@ -128,7 +122,12 @@ export default function SearchScreen() {
   const visibleJobs = allJobs.slice(0, visibleCount);
   const hasMore = visibleCount < allJobs.length;
   const errorCopy = useMemo(() => getErrorCopy(error), [error]);
-  const podeSalvar = hasSearched && !loading && allJobs.length > 0 && !error;
+  const jaEstaaSalva = buscasSalvas.some(
+    (b) =>
+      b.filters.cargo.trim().toLowerCase() === filters.cargo.trim().toLowerCase() &&
+      b.filters.cidade.trim().toLowerCase() === filters.cidade.trim().toLowerCase()
+  );
+  const podeSalvar = hasSearched && !loading && allJobs.length > 0 && !error && (buscasSalvas.length < 3 || jaEstaaSalva);
 
   const handleSearch = async () => {
     if (!filters.cargo.trim() || !filters.cidade.trim()) {
@@ -142,7 +141,7 @@ export default function SearchScreen() {
       setError(null);
       setCacheHit(false);
       setVisibleCount(PAGE_SIZE);
-      setBuscaSalva(null); // esconde o card ao iniciar nova busca
+      setBuscasSalvas([]); // esconde os cards ao iniciar nova busca
 
       const result = await buscarVagas(filters);
       setAllJobs(result.vagas);
@@ -161,23 +160,25 @@ export default function SearchScreen() {
 
   const handleSalvarBusca = async () => {
     if (!meta) return;
-    await salvarBusca(filters, allJobs, meta);
-    showToast("Busca salva!", setToast);
+    const { substituiu } = await salvarBusca(filters, allJobs, meta);
+    const novas = await carregarBuscasSalvas();
+    setBuscasSalvas(novas);
+    showToast(substituiu ? "Busca atualizada!" : "Busca salva!", setToast);
   };
 
-  const handleContinuarBusca = () => {
-    if (!buscaSalva) return;
-    setFilters(buscaSalva.filters);
-    setAllJobs(buscaSalva.vagas);
-    setMeta(buscaSalva.meta);
+  const handleContinuarBusca = (busca: BuscaSalva) => {
+    setFilters(busca.filters);
+    setAllJobs(busca.vagas);
+    setMeta(busca.meta);
     setHasSearched(true);
     setCacheHit(false);
-    setBuscaSalva(null);
+    setBuscasSalvas([]);
   };
 
-  const handleDescartarBuscaSalva = async () => {
-    await removerBuscaSalva();
-    setBuscaSalva(null);
+  const handleDescartarBuscaSalva = async (id: string) => {
+    await removerBuscaSalva(id);
+    const novas = await carregarBuscasSalvas();
+    setBuscasSalvas(novas);
   };
 
   return (
@@ -185,23 +186,29 @@ export default function SearchScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SearchForm filters={filters} loading={loading} onChange={setFilters} onSubmit={handleSearch} />
 
-        {/* Card de busca salva */}
-        {buscaSalva && !hasSearched ? (
-          <View style={styles.buscaSalvaCard}>
-            <View style={styles.buscaSalvaInfo}>
-              <Ionicons name="bookmark" size={16} color={colors.accent} style={{ marginRight: 8 }} />
-              <Text style={styles.buscaSalvaLabel} numberOfLines={1}>
-                {buscaSalva.filters.cargo} em {buscaSalva.filters.cidade}
-              </Text>
-            </View>
-            <View style={styles.buscaSalvaActions}>
-              <Pressable onPress={handleContinuarBusca} style={styles.buscaSalvaBtnPrimary}>
-                <Text style={styles.buscaSalvaBtnPrimaryText}>Continuar</Text>
-              </Pressable>
-              <Pressable onPress={handleDescartarBuscaSalva} style={styles.buscaSalvaBtnSecondary}>
-                <Text style={styles.buscaSalvaBtnSecondaryText}>Descartar</Text>
-              </Pressable>
-            </View>
+        {/* Cards de buscas salvas */}
+        {buscasSalvas.length > 0 && !hasSearched ? (
+          <View style={styles.buscasSalvasContainer}>
+            <Text style={styles.buscasSalvasTitle}>Buscas salvas</Text>
+            {buscasSalvas.map((busca) => (
+              <View key={busca.id} style={styles.buscaSalvaCard}>
+                <View style={styles.buscaSalvaInfo}>
+                  <Ionicons name="bookmark" size={14} color={colors.accent} style={{ marginRight: 8 }} />
+                  <Text style={styles.buscaSalvaLabel} numberOfLines={1}>
+                    {busca.filters.cargo} · {busca.filters.cidade}
+                  </Text>
+                  <Text style={styles.buscaSalvaVagas}>{busca.meta.total_validas} vagas</Text>
+                </View>
+                <View style={styles.buscaSalvaActions}>
+                  <Pressable onPress={() => handleContinuarBusca(busca)} style={styles.buscaSalvaBtnPrimary}>
+                    <Text style={styles.buscaSalvaBtnPrimaryText}>Continuar</Text>
+                  </Pressable>
+                  <Pressable onPress={() => handleDescartarBuscaSalva(busca.id)} style={styles.buscaSalvaBtnSecondary}>
+                    <Ionicons name="trash-outline" size={14} color={colors.muted} />
+                  </Pressable>
+                </View>
+              </View>
+            ))}
           </View>
         ) : null}
 
@@ -228,8 +235,8 @@ export default function SearchScreen() {
               <Text style={styles.resultsTitle}>Vagas encontradas</Text>
               {podeSalvar ? (
                 <Pressable onPress={handleSalvarBusca} style={styles.salvarBtn} hitSlop={8}>
-                  <Ionicons name="bookmark-outline" size={20} color={colors.accent} />
-                  <Text style={styles.salvarBtnText}>Salvar busca</Text>
+                  <Ionicons name={jaEstaaSalva ? "bookmark" : "bookmark-outline"} size={20} color={colors.accent} />
+                  <Text style={styles.salvarBtnText}>{jaEstaaSalva ? "Atualizar" : "Salvar busca"}</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -279,24 +286,41 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 120,
   },
+  buscasSalvasContainer: {
+    marginBottom: 16,
+  },
+  buscasSalvasTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
   buscaSalvaCard: {
     backgroundColor: colors.backgroundElevated,
-    borderColor: colors.accent,
-    borderRadius: 16,
+    borderColor: colors.border,
+    borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 16,
-    padding: 14,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   buscaSalvaInfo: {
     alignItems: "center",
     flexDirection: "row",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   buscaSalvaLabel: {
     color: colors.text,
     flex: 1,
     fontSize: 14,
     fontWeight: "700",
+  },
+  buscaSalvaVagas: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
   },
   buscaSalvaActions: {
     flexDirection: "row",
@@ -306,7 +330,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     borderRadius: 999,
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: "center",
   },
   buscaSalvaBtnPrimaryText: {
@@ -315,17 +339,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   buscaSalvaBtnSecondary: {
+    alignItems: "center",
     borderColor: colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  buscaSalvaBtnSecondaryText: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: "600",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
   resultsHeader: {
     marginBottom: 16,
