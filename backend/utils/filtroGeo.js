@@ -14,7 +14,10 @@ const TITULO_INGLES_REMOTE = /^remote\s+[a-z]/i;
 const TEXTO_INGLES = /\b(the |and |for |with |our |you |we are |is a |is an |will be |looking for |years of |we offer |must have )\b/i;
 
 // Termos de cargo tipicamente ingleses
-const CARGO_INGLES = /\b(payroll|staffing|workforce|account executive|account manager|customer success|employee relations|client services|onboarding specialist|sales development|compliance officer)\b/i;
+const CARGO_INGLES = /\b(payroll|staffing|workforce|account executive|account manager|customer success|employee relations|client services|onboarding specialist|sales development|compliance officer|accounting advisor|tax advisor|bookkeeping|cpa firm)\b/i;
+
+// Sinais inequívocos de vaga americana (presentes mesmo em descrição truncada)
+const SINAIS_EUA = /\(u\.s\.\)|\bu\.s\b|\busa\b|salary:\s*\$|\$\d{2,3}[,k]|\bwork from home\b|\bis hiring\b|\bremote \(u/i;
 
 /**
  * Retorna true se o texto parece ser em inglês (sem marcas de português).
@@ -23,7 +26,12 @@ function pareceIngles(titulo, descricao) {
   const tituloStr = String(titulo ?? "");
   const texto = `${tituloStr} ${descricao ?? ""}`;
   if (MARCAS_PORTUGUES.test(texto)) return false;
-  return TITULO_INGLES_REMOTE.test(tituloStr) || TEXTO_INGLES.test(texto) || CARGO_INGLES.test(texto);
+  return (
+    TITULO_INGLES_REMOTE.test(tituloStr) ||
+    TEXTO_INGLES.test(texto) ||
+    CARGO_INGLES.test(texto) ||
+    SINAIS_EUA.test(texto)
+  );
 }
 
 // Siglas de estados americanos (e canadenses) que não existem como siglas brasileiras
