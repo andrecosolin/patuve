@@ -34,14 +34,16 @@ function pareceIngles(titulo, descricao) {
   );
 }
 
-// Siglas de estados americanos (e canadenses) que não existem como siglas brasileiras
+// Siglas de estados americanos (e canadenses) que NÃO colidem com siglas de estados brasileiros.
+// Removidas: AL (Alagoas), MA (Maranhão), MS (Mato Grosso do Sul), MT (Mato Grosso),
+//            PA (Pará), SC (Santa Catarina) — essas existem nos dois países.
 const SIGLAS_ESTADOS_EUA = new Set([
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MI","MN","MO","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","RI","SD","TN","TX","UT","VT",
   "VA","WA","WV","WI","WY","DC",
-  // Canadá
-  "ON","QC","BC","AB","MB","SK","NS","NB","NL","PE","NT","YT","NU",
+  // Canadá (sem colisões com BR)
+  "ON","QC","BC","AB","MB","SK","NS","NB","NL","NT","YT","NU",
 ]);
 
 function temSiglaAmericana(localizacao) {
