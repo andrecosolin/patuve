@@ -3,6 +3,10 @@ import { Tabs } from "expo-router";
 
 import { colors } from "@/constants/theme";
 
+// Desabilite para ocultar funcionalidades premium (aba Internacional, etc.)
+// Manter false até lançamento do plano premium na Play Store.
+const PREMIUM_ENABLED = false;
+
 export default function TabsLayout() {
   return (
     <Tabs
